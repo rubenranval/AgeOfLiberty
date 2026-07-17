@@ -7,8 +7,9 @@ namespace AgeOfLiberty.Services;
 public class DirectusClient
 {
     private readonly HttpClient _http;
-    private const string DefaultBaseUrl = "https://api.ageofliberty.org"; 
+    private const string DefaultBaseUrl = "https://api.ageofliberty.org";
 
+ 
     public string BaseUrl { get; set; }
 
     public DirectusClient()
@@ -19,24 +20,33 @@ public class DirectusClient
 
     // Todo: mettre à jour manuellement les niveaux
 
+    public Task ClearCacheAsync()
+    {
+        try { if (File.Exists(CachePath)) File.Delete(CachePath); } catch { }
+        return Task.CompletedTask;
+    }
+
     public async Task<GameBundle?> FetchGameBundleAsync()
     {
         try
         {
-            var configTask = FetchAsync<GameConfig>("/items/game_config");
-            var erasTask = FetchListAsync<Era>("/items/eras?sort=sort_order&fields=*");
-            var atomsTask = FetchListAsync<Atom>("/items/atoms?fields=*&sort=era_id,name");
-            var depsTask = FetchListAsync<Dependency>("/items/dependencies?fields=*");
-            var charsTask = FetchListAsync<Character>("/items/characters?fields=*&sort=era_id");
-            var scenariosTask = FetchListAsync<Scenario>("/items/scenarios?fields=*&sort=trigger_pop");
-            var choicesTask = FetchListAsync<Choice>("/items/choices?fields=*&sort=scenario_id,sort_order");
-            var effectsTask = FetchListAsync<Models.Effect>("/items/effects?fields=*");
+            // game_config: fetch as list, take first item
+            var configTask = FetchListAsync<GameConfig>("/items/game_config?limit=1&fields=*");
+            var erasTask = FetchListAsync<Era>("/items/eras?sort=sort_order&fields=*&limit=-1");
+            var atomsTask = FetchListAsync<Atom>("/items/atoms?fields=*&sort=era_id,name&limit=-1");
+            var depsTask = FetchListAsync<Dependency>("/items/dependencies?fields=*&limit=-1");
+            var charsTask = FetchListAsync<Character>("/items/characters?fields=*&limit=-1");
+            var scenariosTask = FetchListAsync<Scenario>("/items/scenarios?fields=*&sort=trigger_pop&limit=-1");
+            var choicesTask = FetchListAsync<Choice>("/items/choices?fields=*&sort=scenario_id,sort_order&limit=-1");
+            var effectsTask = FetchListAsync<Models.Effect>("/items/effects?fields=*&limit=-1");
 
             await Task.WhenAll(configTask, erasTask, atomsTask, depsTask, charsTask, scenariosTask, choicesTask, effectsTask);
 
+            var configList = await configTask;
+
             return new GameBundle
             {
-                Config = await configTask ?? new GameConfig(),
+                Config = configList?.FirstOrDefault() ?? new GameConfig(),
                 Eras = await erasTask ?? new(),
                 Atoms = await atomsTask ?? new(),
                 Dependencies = await depsTask ?? new(),
@@ -68,7 +78,7 @@ public class DirectusClient
 
     // Local cache - Todo: implement update mechanism
 
-    private static string CachePath => Path.Combine(FileSystem.CacheDirectory, "game_bundle.json");
+    private static string CachePath => Path.Combine(FileSystem.CacheDirectory, "game_bundle2.json");
 
     public async Task SaveBundleToCacheAsync(GameBundle bundle)
     {

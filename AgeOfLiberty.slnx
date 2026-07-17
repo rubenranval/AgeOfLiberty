@@ -1,3 +1,5 @@
 <Solution>
-  <Project Path="AgeOfLiberty/AgeOfLiberty.csproj" />
+  <Project Path="AgeOfLiberty/AgeOfLiberty.csproj">
+    <Deploy Solution="Debug|*" />
+  </Project>
 </Solution>

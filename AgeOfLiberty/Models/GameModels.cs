@@ -143,7 +143,7 @@ public class Character
     public string Role { get; set; } = "";
 
     [JsonPropertyName("era_id")]
-    public int EraId { get; set; }
+    public int? EraId { get; set; }
 
     [JsonPropertyName("intro_dialogue")]
     public string? IntroDialogue { get; set; }
@@ -247,10 +247,16 @@ public class PopSnapshot
 
 public class ChoiceEvent
 {
+    public int ChoiceId { get; set; }
     public int Turn { get; set; }
     public string Label { get; set; } = "";
     public double FreedomWeight { get; set; }
     public List<int> AffectedAtomIds { get; set; } = new();
+    public Dictionary<int, double> Multipliers { get; set; } = new();        // atomId → immediate mult
+    public Dictionary<int, double> DelayedMultipliers { get; set; } = new(); // atomId → delayed mult
+    public int DelayedTurn { get; set; }                                     // when the delayed ones hit
+    public string? LearnUrl { get; set; }
+    public string? LearnLabel { get; set; }
 }
 
 public class DelayedEffect

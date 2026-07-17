@@ -2,7 +2,7 @@
 
     <PropertyGroup>
 		<StaticWebAssetBasePath>/</StaticWebAssetBasePath>
-        <TargetFrameworks>net10.0-android</TargetFrameworks>
+        <TargetFrameworks>net10.0-android;net10.0-ios</TargetFrameworks>
         <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('linux'))">$(TargetFrameworks);net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
         <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
 
@@ -30,14 +30,14 @@
         <MauiXamlInflator>SourceGen</MauiXamlInflator>
 
         <!-- Display name -->
-        <ApplicationTitle>AgeOfLiberty</ApplicationTitle>
+        <ApplicationTitle>Age of Liberty</ApplicationTitle>
 
         <!-- App Identifier -->
-        <ApplicationId>com.companyname.ageofliberty</ApplicationId>
+        <ApplicationId>org.studentsforliberty.ageofliberty</ApplicationId>
 
         <!-- Versions -->
-        <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-        <ApplicationVersion>1</ApplicationVersion>
+        <ApplicationDisplayVersion>0.5.0</ApplicationDisplayVersion>
+        <ApplicationVersion>3</ApplicationVersion>
 
         <!-- To develop, package, and publish an app to the Microsoft Store, see: https://aka.ms/MauiTemplateUnpackaged -->
         <WindowsPackageType>None</WindowsPackageType>
@@ -47,6 +47,15 @@
         <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">24.0</SupportedOSPlatformVersion>
         <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
         <TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
+    </PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)'=='Release' and $(TargetFramework.Contains('android'))">
+		<PublishTrimmed>true</PublishTrimmed>
+		<TrimMode>partial</TrimMode>
+	</PropertyGroup>
+	
+	<PropertyGroup Condition="$(TargetFramework.Contains('ios'))">
+        <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
     </PropertyGroup>
 
     <ItemGroup>
@@ -71,6 +80,7 @@
         <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.51" />
         <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="10.0.51" />
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.5" />
+        <PackageReference Include="Plugin.LocalNotification" Version="14.1.1" />
     </ItemGroup>
 
 </Project>

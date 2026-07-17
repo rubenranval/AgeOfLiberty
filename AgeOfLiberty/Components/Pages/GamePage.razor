@@ -1,4 +1,5 @@
 ﻿@page "/"
+@using System.Linq
 @using AgeOfLiberty.Models
 @using AgeOfLiberty.Services
 @inject GameState State
@@ -11,558 +12,1297 @@
 
 @if (!_loaded)
 {
-    <div class="loading">
-        <div class="loading-icon">🏛️</div>
-        <div class="loading-text">Updating...</div>
-    </div>
-}
-else if (State.Phase == GamePhase.Intro)
-{
-    <div class="intro-screen">
-        <canvas id="bgParticles" class="bg-particles"></canvas>
-        <div class="intro-content">
-            <div class="intro-glyph">
-                <span class="intro-glyph-icon">🏛️</span>
-                <div class="intro-ring"></div>
-                <div class="intro-ring intro-ring-2"></div>
-            </div>
-            <h1 class="intro-title">LIBERTY CITY</h1>
-            <p class="intro-tag">Build a civilization. Face dilemmas.<br />Watch consequences cascade.</p>
-            <div class="intro-lore">
-                <p>You are the founder of a small settlement on the edge of the wilderness.</p>
-                <p>Every resource is connected. Every decision ripples through the economy.</p>
-                <p>The only question is: <em class="accent">how free will your city be?</em></p>
-            </div>
-            <div class="name-input-wrap">
-                <label class="name-label">Name your city</label>
-                <input class="name-input" type="text" maxlength="24"
-                       @bind="State.CityName" @bind:event="oninput"
-                       placeholder="Liberty City" />
-            </div>
-            <button class="start-btn" @onclick="StartGame">
-                <span>FOUND YOUR VILLAGE</span>
-                <span class="start-arrow">→</span>
-            </button>
-        </div>
+    <div style="intro-stage">
+        
+        <div style="boot-status">@(_loadError ?? "Updating...")</div>
     </div>
 }
 else
 {
-    <div class="game-container">
-        <canvas id="bgParticles" class="bg-particles"></canvas>
+    <canvas id="bgParticles" class="bg-particles"></canvas>
 
-        <div class="hud">
-            <div class="hud-left">
-                <div class="hud-stat">
-                    <span class="hud-emoji">💰</span>
-                    <div class="hud-stat-inner">
-                        <div class="hud-num gold-color">$@EconomyEngine.FormatNumber(State.Gold)</div>
-                        <div class="hud-rate">+@EconomyEngine.FormatNumber(Economy.GetIncomeRate())/min</div>
-                    </div>
-                </div>
-                <div class="hud-divider"></div>
-                <div class="hud-stat">
-                    <span class="hud-emoji">👥</span>
-                    <div class="hud-stat-inner">
-                        <div class="hud-num pop-color">@EconomyEngine.FormatNumber(State.Population)</div>
-                    </div>
-                </div>
-            </div>
-            <div class="hud-center">
-                <div class="hud-era-name" style="color: @CurrentEra.Color">@CurrentEra.Name</div>
-                <div class="hud-era-sub">Turn @State.Turn</div>
-            </div>
-            <div class="hud-right">
-                <button class="hud-icon-btn" @onclick="ToggleSummary">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b8aaa" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7" /><line x1="16.5" y1="16.5" x2="21" y2="21" /></svg>
-                </button>
-                <button class="hud-icon-btn">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b8aaa" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
-                </button>
-            </div>
-        </div>
-
-        <div class="zoom-controls">
-            <button class="zoom-btn" @onclick="ZoomIn">+</button>
-            <div class="zoom-level">@((int)(_zoom * 100))%</div>
-            <button class="zoom-btn" @onclick="ZoomOut">−</button>
-            <button class="zoom-btn zoom-reset" @onclick="ZoomReset">⟲</button>
-        </div>
-
-        @if (State.FeedbackText != null)
-        {
-            <div class="toast">@State.FeedbackText</div>
-        }
-
-        @if (State.EraUnlockAnimIndex is int eraIdx)
-        {
-            var eraData = Config.Eras[eraIdx];
-            <div class="overlay era-unlock-overlay" @onclick="DismissEraUnlock">
-                <div id="eraUnlockCanvas" class="era-3d-canvas"></div>
-                <div class="era-unlock-ui">
-                    <div class="era-unlock-label">New Era Unlocked</div>
-                    <div class="era-unlock-name" style="color: @eraData.Color">@eraData.Name</div>
-                    <div class="era-unlock-sub">New atoms available</div>
-                    <div class="era-unlock-tap">Tap to continue</div>
-                </div>
-            </div>
-        }
-
-        @if (State.Phase == GamePhase.Scenario && State.ActiveScenario is Scenario s)
-        {
-            var character = Config.CharsById.GetValueOrDefault(s.CharacterId);
-            var choices = Config.GetChoices(s.Id);
-            <div class="overlay">
-                <div class="scenario-card">
-                    <div class="scenario-head">
-                        <span class="scenario-char-icon">@(character?.Icon ?? "❓")</span>
-                        <div>
-                            <div class="scenario-char-name">@(character?.Name ?? "Unknown")</div>
-                            <div class="scenario-char-role">@(character?.Role ?? "")</div>
-                        </div>
-                    </div>
-                    <p class="scenario-text">@s.Text</p>
-                    <div class="scenario-choices">
-                        @foreach (var choice in choices)
-                        {
-                            var cid = choice.Id;
-                            <button class="choice-btn" @onclick="() => HandleChoice(cid)">
-                                @choice.Label
-                            </button>
-                        }
-                    </div>
-                </div>
-            </div>
-        }
-
-        @if (State.ShowSummary)
-        {
-            var freedom = State.ComputeFreedomScore();
-            var totalBuildings = State.Built.Values.Sum();
-            <div class="overlay" @onclick="ToggleSummary">
-                <div class="scenario-card" style="max-height:80vh;overflow-y:auto;" @onclick:stopPropagation="true">
-                    <div style="text-align:center;margin-bottom:20px;">
-                        <div style="font-size:40px;">🏛️</div>
-                        <div style="font-size:22px;font-weight:800;color:#4aeadc;letter-spacing:3px;margin-top:8px;">@State.CityName</div>
-                        <div style="font-size:12px;color:#6b8aaa;margin-top:4px;">@CurrentEra.Name · Turn @State.Turn</div>
-                    </div>
-                    <div style="display:flex;align-items:center;gap:16px;padding:16px;background:rgba(10,30,54,0.5);border:1px solid #0d2a42;border-radius:12px;margin-bottom:16px;">
-                        <div style="font-size:36px;font-weight:800;color:@(freedom.Score >= 70 ? "#4aeadc" : freedom.Score >= 40 ? "#ffd166" : "#ff6b6b");font-family:'JetBrains Mono',monospace;">@freedom.Score</div>
-                        <div>
-                            <div style="font-size:16px;font-weight:700;color:#c8dce8;">@freedom.Title</div>
-                            <div style="font-size:12px;color:#6b8aaa;">Liberty Index · Grade @freedom.Grade</div>
-                        </div>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:16px;">
-                        <div style="text-align:center;background:rgba(10,30,54,0.5);border:1px solid #0d2a42;border-radius:10px;padding:10px 4px;">
-                            <div style="font-size:16px;font-weight:700;color:#c8dce8;font-family:'JetBrains Mono',monospace;">@EconomyEngine.FormatNumber(State.Population)</div>
-                            <div style="font-size:9px;color:#3a5a7a;text-transform:uppercase;letter-spacing:1px;margin-top:2px;">Citizens</div>
-                        </div>
-                        <div style="text-align:center;background:rgba(10,30,54,0.5);border:1px solid #0d2a42;border-radius:10px;padding:10px 4px;">
-                            <div style="font-size:16px;font-weight:700;color:#c8dce8;font-family:'JetBrains Mono',monospace;">@EconomyEngine.FormatNumber(State.Gold)</div>
-                            <div style="font-size:9px;color:#3a5a7a;text-transform:uppercase;letter-spacing:1px;margin-top:2px;">SFL$</div>
-                        </div>
-                        <div style="text-align:center;background:rgba(10,30,54,0.5);border:1px solid #0d2a42;border-radius:10px;padding:10px 4px;">
-                            <div style="font-size:16px;font-weight:700;color:#c8dce8;font-family:'JetBrains Mono',monospace;">@totalBuildings</div>
-                            <div style="font-size:9px;color:#3a5a7a;text-transform:uppercase;letter-spacing:1px;margin-top:2px;">Buildings</div>
-                        </div>
-                        <div style="text-align:center;background:rgba(10,30,54,0.5);border:1px solid #0d2a42;border-radius:10px;padding:10px 4px;">
-                            <div style="font-size:16px;font-weight:700;color:#c8dce8;font-family:'JetBrains Mono',monospace;">@State.ChoiceEvents.Count</div>
-                            <div style="font-size:9px;color:#3a5a7a;text-transform:uppercase;letter-spacing:1px;margin-top:2px;">Decisions</div>
-                        </div>
-                    </div>
-                    @if (State.ChoiceEvents.Count > 0)
-                    {
-                        <div style="font-size:10px;color:#6b8aaa;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">Your decisions</div>
-                        @foreach (var ev in State.ChoiceEvents)
-                        {
-                            <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(10,30,54,0.4);border:1px solid #0d2a42;border-radius:10px;margin-bottom:6px;">
-                                <div style="width:8px;height:8px;border-radius:50%;background:#ffd166;flex-shrink:0;"></div>
-                                <div style="font-size:10px;color:#3a5a7a;font-family:'JetBrains Mono',monospace;min-width:28px;">T@ev.Turn</div>
-                                <div style="font-size:12px;color:#8aaccc;">@ev.Label</div>
-                            </div>
-                        }
-                    }
-                    <div style="text-align:center;margin-top:16px;">
-                        <button class="build-btn" @onclick="ShareCity">SHARE YOUR CITY</button>
-                        <div style="font-size:12px;color:#6b8aaa;margin-top:10px;">Can your friends build a freer city?</div>
-                        <div style="font-size:10px;color:#3a5a7a;margin-top:12px;padding-top:10px;border-top:1px solid #0d2a42;">A game by <span style="color:#6b8aaa;font-weight:600;">Students For Liberty</span></div>
-                    </div>
-                </div>
-            </div>
-        }
-
-        @if (_stockViewAtomId is int svId && Config.AtomsById.TryGetValue(svId, out var svAtom))
-        {
-            var svHistory = State.PriceHistory;
-            if (svHistory.Count >= 2)
+    @if (State.Phase == GamePhase.Intro)
+    {
+        <div class="intro-screen" @onclick="IntroTap">
+            @if (_introFading)
             {
-                var svPrices = svHistory.Select(h => h.Prices.GetValueOrDefault(svId, svAtom.BasePrice)).ToList();
-                var compPrices = _compareAtomId.HasValue
-                    ? svHistory.Select(h => h.Prices.GetValueOrDefault(_compareAtomId.Value, 0)).ToList()
-                    : new List<int>();
-                var allVals = svPrices.Concat(compPrices).Where(v => v > 0).ToList();
-                var svMin = allVals.Min(); var svMax = allVals.Max(); var svRange = Math.Max(svMax - svMin, 1);
-                var svFirst = svPrices[0]; var svLast = svPrices[^1];
-                var svTrend = svLast > svFirst ? "#4ade80" : svLast < svFirst ? "#ff6b6b" : "#6b8aaa";
-                var svPct = svFirst > 0 ? (int)Math.Round(((double)(svLast - svFirst) / svFirst) * 100) : 0;
+                <div class="intro-fadeout"></div>
+            }
+            @if (_introPhase != IntroPhase.Commit && _introPhase != IntroPhase.Naming)
+            {
+                <button class="intro-skip" @onclick="IntroSkip" @onclick:stopPropagation="true">SKIP INTRO ›</button>
+            }
 
-                var W = 560; var H = 220; var padX = 44; var padY = 24;
-                var chartW = W - padX * 2; var chartH = H - padY * 2;
+            @if (_introPhase == IntroPhase.Boot || _introPhase == IntroPhase.Awakening)
+            {
+                <div class="intro-blackout @(_introPhase == IntroPhase.Awakening ? "out" : "")"></div>
+            }
 
-                string toX(int i) => ((double)padX + (double)i / (svHistory.Count - 1) * chartW).ToString("F1");
-                string toY(int v) => ((double)padY + (1.0 - (double)(v - svMin) / svRange) * chartH).ToString("F1");
+            <canvas id="introCanvas" class="intro-canvas"></canvas>
+            <div class="intro-stage">
+                <div class="intro-badge-space"></div>
 
-                var mainLine = string.Join(" ", svPrices.Select((p, i) => $"{toX(i)},{toY(p)}"));
-                var mainFill = $"{padX},{padY + chartH} {mainLine} {toX(svPrices.Count - 1)},{padY + chartH}";
-                var compLine = compPrices.Count > 0
-                    ? string.Join(" ", compPrices.Select((p, i) => $"{toX(i)},{toY(p)}"))
-                    : "";
-
-                var yTicks = Enumerable.Range(0, 5).Select(i =>
+                @if (_introPhase == IntroPhase.Boot)
                 {
-                    var v = svMin + svRange * i / 4;
-                    return new { Val = v, Y = double.Parse(toY(v), System.Globalization.CultureInfo.InvariantCulture) };
-                }).ToList();
+                    <div class="boot-status">System booting</div>
+                }
 
-                var svEvents = State.ChoiceEvents
-                    .Where(e => e.AffectedAtomIds.Contains(svId) || (_compareAtomId.HasValue && e.AffectedAtomIds.Contains(_compareAtomId.Value)))
-                    .Select(e =>
+                @if (_introPhase == IntroPhase.Dialogue || _introPhase == IntroPhase.Commit)
+                {
+                    <div class="intro-dialogue">
+                        <span id="introLine"></span><span class="intro-caret"></span>
+                    </div>
+                }
+
+                @if (_introPhase == IntroPhase.Naming)
+                {
+                    <h1 class="intro-title intro-title-late">Age Of LibertY</h1>
+                    <div class="intro-dialogue naming-prompt">How do you want to name your City?</div>
+                    <div class="name-input-wrap" @onclick:stopPropagation="true">
+                        <input class="name-input" type="text" maxlength="24"
+                               @bind="State.CityName" @bind:event="oninput"
+                               placeholder="Liberty City" />
+                    </div>
+                    <button class="start-btn" @onclick="IntroCommit" @onclick:stopPropagation="true">
+                        <span>LAUNCH SIMULATION</span>
+                        <span class="start-arrow">→</span>
+                    </button>
+                }
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="game-container">
+            <div class="game-fadein"></div>
+
+            @if (_activeTab == Tab.Map)
+            {
+                <!-- ═══ MAP TAB ═══ -->
+                <!-- HUD -->
+                <div class="hud">
+                    <div class="hud-left">
+                        <div class="hud-stat" id="hudGold">
+                            <span class="hud-emoji">💰</span>
+                            <div class="hud-stat-inner">
+                                <div class="hud-num gold-color">$@EconomyEngine.FormatNumber(State.Gold)</div>
+                                <div class="hud-rate">+@EconomyEngine.FormatNumber(Economy.GetIncomeRate())/min</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="hud-center">
+                        <div class="hud-era-name" style="color: @CurrentEra.Color">@CurrentEra.Name</div>
+                        <div class="hud-era-sub">Turn @State.Turn</div>
+                    </div>
+                    <div class="hud-right">
+                        <div class="hud-stat" id="hudPop">
+                            <span class="hud-emoji">👥</span>
+                            <div class="hud-stat-inner">
+                                <div class="hud-num pop-color">@EconomyEngine.FormatNumber(State.Population)</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zoom controls -->
+                <div class="zoom-controls">
+                    <button class="zoom-btn" @onclick="ZoomIn">+</button>
+                    <div class="zoom-level">@((int)(_zoom * 100))%</div>
+                    <button class="zoom-btn" @onclick="ZoomOut">−</button>
+                    <button class="zoom-btn zoom-reset" @onclick="ZoomReset">⟲</button>
+                </div>
+
+                <!-- Toast -->
+                @if (State.FeedbackText != null)
+                {
+                    <div class="overlay feedback-overlay" @onclick="DismissFeedback">
+                        <div class="feedback-modal">
+                            <span class="bracket tl"></span><span class="bracket tr"></span>
+                            <span class="bracket bl"></span><span class="bracket br"></span>
+                            <div class="feedback-text">@State.FeedbackText</div>
+                            <div class="feedback-hint">tap to continue</div>
+                        </div>
+                    </div>
+                }
+
+                <!-- ═══ TUTORIAL: the engine walks the observer through ═══ -->
+                @if (_tutorialActive && _tutStep >= 0)
+                {
+                    var tut = TutSteps[_tutStep];
+                    @if (!tut.WaitDrawer && !State.DrawerOpen)
                     {
-                        var idx = svHistory.FindIndex(h => h.Turn >= e.Turn);
-                        return idx >= 0 ? new { e.Label, X = double.Parse(toX(idx), System.Globalization.CultureInfo.InvariantCulture) } : null;
-                    })
-                    .Where(x => x != null).ToList();
-
-                var compAtom = _compareAtomId.HasValue && Config.AtomsById.TryGetValue(_compareAtomId.Value, out var ca) ? ca : null;
-                var comparables = Config.Atoms.Where(a => a.Id != svId).Take(12).ToList();
-
-                <div class="overlay" @onclick="CloseStockView">
-                    <div class="stock-card" @onclick:stopPropagation="true">
-
-                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
-                            <span style="font-size:28px;">@svAtom.Icon</span>
-                            <div>
-                                <div style="font-size:20px;font-weight:700;color:#4aeadc;">@svAtom.Name</div>
-                                <div style="font-family:'JetBrains Mono',monospace;">
-                                    <span style="color:@svTrend;font-weight:600;">$@svLast</span>
-                                    <span style="color:@svTrend;font-size:12px;"> (@(svPct >= 0 ? "+" : "")@(svPct)%)</span>
-                                </div>
-                            </div>
-                            <button class="stock-close" @onclick="CloseStockView">✕</button>
-                        </div>
-
-                        <!-- Chart -->
-                        <div class="stock-chart-wrap">
-                            <svg viewBox="0 0 @W @H" style="width:100%;height:auto;display:block;">
-                                <defs>
-                                    <linearGradient id="sv-fill" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stop-color="@svTrend" stop-opacity="0.15" />
-                                        <stop offset="100%" stop-color="@svTrend" stop-opacity="0" />
-                                    </linearGradient>
-                                </defs>
-                                <!-- Grid -->
-                                @foreach (var yt in yTicks)
-                                {
-                                    <line x1="@padX" y1="@yt.Y.ToString("F1")" x2="@(W - padX)" y2="@yt.Y.ToString("F1")" stroke="#0d2a42" stroke-width="0.5" />
-                                    @((MarkupString)$"<text x=\"{padX - 6}\" y=\"{yt.Y + 3:F1}\" text-anchor=\"end\" font-size=\"9\" fill=\"#3a5a7a\" font-family=\"'JetBrains Mono', monospace\">${yt.Val}</text>")
-                                }
-                                <!-- Fill -->
-                                <polygon points="@mainFill" fill="url(#sv-fill)" />
-                                <!-- Main line -->
-                                <polyline points="@mainLine" fill="none" stroke="@svTrend" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                <!-- Compare line -->
-                                @if (!string.IsNullOrEmpty(compLine))
-                                {
-                                    <polyline points="@compLine" fill="none" stroke="#818cf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 3" />
-                                }
-                                <!-- Event markers -->
-                                @foreach (var ev in svEvents)
-                                {
-                                    <line x1="@ev!.X.ToString("F1")" y1="@padY" x2="@ev.X.ToString("F1")" y2="@(padY + chartH)" stroke="#ffd166" stroke-width="1" stroke-dasharray="3 3" opacity="0.5" />
-                                    <circle cx="@ev.X.ToString("F1")" cy="@(padY - 2)" r="5" fill="#ffd166" stroke="#04151e" stroke-width="1.5" />
-                                    @((MarkupString)$"<text x=\"{ev.X:F1}\" y=\"{padY - 12}\" text-anchor=\"middle\" font-size=\"7\" fill=\"#ffd166\" font-family=\"'JetBrains Mono', monospace\">{(ev.Label.Length > 18 ? ev.Label[..16] + "…" : ev.Label)}</text>")
-                                }
-                            </svg>
-                        </div>
-
-                        <!-- Legend -->
-                        <div class="stock-legend">
-                            <div class="stock-legend-item">
-                                <div style="width:12px;height:3px;background:@svTrend;border-radius:2px;"></div>
-                                <span>@svAtom.Icon @svAtom.Name</span>
-                            </div>
-                            @if (compAtom != null)
+                        <div class="tut-scrim" @onclick="TutTap"></div>
+                    }
+                    <button class="intro-skip tut-skip" @onclick="FinishTutorial">SKIP ›</button>
+                    <div class="tut-modal @(tut.Top ? "tut-top" : "tut-bottom")" @onclick="TutTap">
+                        <span class="bracket tl"></span><span class="bracket tr"></span>
+                        <span class="bracket bl"></span><span class="bracket br"></span>
+                        <canvas id="tutCanvas" class="tut-canvas"></canvas>
+                        <div class="tut-body">
+                            <div class="tut-text"><span id="tutLine"></span><span class="intro-caret tut-caret"></span></div>
+                            @if (!tut.WaitDrawer)
                             {
-                                <div class="stock-legend-item">
-                                    <div style="width:12px;height:3px;background:#818cf8;border-radius:2px;"></div>
-                                    <span>@compAtom.Icon @compAtom.Name</span>
-                                    <button class="stock-remove-cmp" @onclick="() => _compareAtomId = null">✕</button>
-                                </div>
+                                <div class="feedback-hint">tap to continue</div>
                             }
-                            <div class="stock-legend-item">
-                                <div style="width:8px;height:8px;background:#ffd166;border-radius:50%;"></div>
-                                <span>Policy decision</span>
-                            </div>
                         </div>
+                    </div>
+                }
 
-                        <div class="stock-compare">
-                            <div style="font-size:10px;color:#6b8aaa;letter-spacing:1px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;margin-bottom:8px;">COMPARE WITH</div>
-                            <div class="stock-compare-grid">
-                                @foreach (var ca2 in comparables)
-                                {
-                                    var cId = ca2.Id;
-                                    <button class="stock-compare-chip @(_compareAtomId == cId ? "active" : "")"
-                                            @onclick="() => _compareAtomId = _compareAtomId == cId ? null : cId">
-                                        <span style="font-size:14px;">@ca2.Icon</span>
-                                        <span style="font-size:10px;">@ca2.Name</span>
-                                    </button>
-                                }
-                            </div>
-                        </div>
+                <!-- ═══ UNIFIED ERA + CHEST OVERLAY ═══ -->
+                @if ((State.EraUnlockAnimIndex is int eraIdx && EraCeremonyAllowed(eraIdx)) || _eraRevealPhase != EraRevealPhase.None)
+                {
+                    var showingEraIdx = _eraRevealPhase == EraRevealPhase.ChestReveal
+                        ? _eraRevealEraIdx
+                        : (State.EraUnlockAnimIndex ?? -1);
 
-                        @if (svEvents.Count > 0)
+                    <div class="overlay era-unlock-overlay" @onclick="OnEraOverlayTap">
+
+                        <!-- Shared 3D canvas — persists through both phases -->
+                        <div id="eraChestCanvas" class="era-3d-canvas"></div>
+
+                        @if (_eraRevealPhase != EraRevealPhase.ChestReveal && showingEraIdx >= 0 && showingEraIdx < Config.Eras.Count)
                         {
-                            <div style="padding-top:12px;border-top:1px solid #0d2a42;">
-                                <div style="font-size:10px;color:#6b8aaa;letter-spacing:1px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;margin-bottom:8px;">POLICY DECISIONS</div>
-                                @foreach (var ev in State.ChoiceEvents.Where(e => e.AffectedAtomIds.Contains(svId)))
+                            <!-- Phase 1: Era Announcement -->
+                            var eraData = Config.Eras[showingEraIdx];
+                            <div class="era-unlock-top">
+                                <div class="era-unlock-label">New Era Unlocked</div>
+                                <div class="era-unlock-name">@eraData.Name</div>
+                            </div>
+
+                            <div class="era-unlock-bottom">
+                                <!-- Era summary stat cards -->
+                                <div class="chest-cards" style="margin-bottom:22px;">
+                                    <div class="atom-reveal-card era-stat-card" id="eraStatCard_0">
+                                        <span class="atom-reveal-icon">⏱️</span>
+                                        <span class="era-stat-value">@_ceremonyTime</span>
+                                        <span class="era-stat-label">Time in era</span>
+                                    </div>
+                                    <div class="atom-reveal-card era-stat-card" id="eraStatCard_1">
+                                        <span class="atom-reveal-icon">💰</span>
+                                        <span class="era-stat-value">$@EconomyEngine.FormatNumber(State.Gold)</span>
+                                        <span class="era-stat-label">Treasury</span>
+                                    </div>
+                                    <div class="atom-reveal-card era-stat-card" id="eraStatCard_2">
+                                        <span class="atom-reveal-icon">👥</span>
+                                        <span class="era-stat-value">+@_ceremonyCitizens</span>
+                                        <span class="era-stat-label">Citizens gained</span>
+                                    </div>
+                                </div>
+                                <div class="era-unlock-tap">Tap to continue</div>
+                            </div>
+                        }
+
+                        @if (_eraRevealPhase == EraRevealPhase.ChestReveal && _eraRevealEraIdx >= 0 && _eraRevealEraIdx < Config.Eras.Count)
+                        {
+                            <!-- Phase 2: Chest Reveal with Atom Cards -->
+                            var chestEra = Config.Eras[_eraRevealEraIdx];
+                            var newAtoms = Config.Atoms.Where(a => a.EraId == chestEra.Id).ToList();
+
+                            <div class="era-unlock-top" style="padding-top:40px;">
+                                <div class="era-unlock-label">@chestEra.Name</div>
+                                <div class="era-unlock-name" style="font-size:24px;">New Resources</div>
+                            </div>
+
+                            <!-- Atom cards overlaid on the 3D scene -->
+                            <div class="chest-cards">
+                                @for (var i = 0; i < newAtoms.Count; i++)
                                 {
-                                    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;">
-                                        <div style="width:8px;height:8px;border-radius:50%;background:#ffd166;flex-shrink:0;"></div>
-                                        <div>
-                                            <div style="font-size:12px;color:#c8dce8;">@ev.Label</div>
-                                            <div style="font-size:10px;color:#3a5a7a;">Turn @ev.Turn</div>
+                                    var atom = newAtoms[i];
+                                    <div class="atom-reveal-card" id="atomCard_@i">
+                                        <span class="atom-reveal-icon">@atom.Icon</span>
+                                        <div class="atom-reveal-row">
+                                            <span class="atom-reveal-name">@atom.Name</span>
+                                            <span class="atom-reveal-price">$@atom.BasePrice</span>
                                         </div>
                                     </div>
                                 }
                             </div>
+
+                            <button class="chest-continue" id="chestContinueBtn" @onclick="DismissChest" @onclick:stopPropagation="true">
+                                START BUILDING →
+                            </button>
                         }
                     </div>
-                </div>
-            }
-            else
-            {
-                <div class="overlay" @onclick="CloseStockView">
-                    <div class="stock-card" @onclick:stopPropagation="true">
-                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
-                            <span style="font-size:28px;">@svAtom.Icon</span>
-                            <div style="font-size:20px;font-weight:700;color:#4aeadc;">@svAtom.Name</div>
-                            <button class="stock-close" @onclick="CloseStockView">✕</button>
-                        </div>
-                        <div style="padding:40px;text-align:center;color:#3a5a7a;">Not enough data yet. Play a few more turns.</div>
-                    </div>
-                </div>
-            }
-        }
-
-        <!-- Graph atomes -->
-        <div class="graph-area" id="graphArea">
-            <svg viewBox="0 0 660 850" class="atom-svg" id="atomSvg"
-                 style="transform: translate(@(_panX)px, @(_panY)px) scale(@_zoom); transform-origin: center top; cursor: grab;">
-
-                <defs>
-                    <filter id="glow"><feGaussianBlur stdDeviation="4" result="g" /><feMerge><feMergeNode in="g" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
-                    <filter id="softglow"><feGaussianBlur stdDeviation="6" result="g" /><feMerge><feMergeNode in="g" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
-                </defs>
-
-                @foreach (var atom in AvailableAtoms)
-                {
-                    var deps = Config.GetDependencies(atom.Id);
-                    foreach (var dep in deps)
-                    {
-                        if (!Config.AtomsById.TryGetValue(dep.RequiresAtomId, out var reqAtom)) continue;
-                        if (!AvailableAtoms.Contains(reqAtom)) continue;
-                        var isCasc = State.Cascading.GetValueOrDefault(atom.Id) || State.Cascading.GetValueOrDefault(reqAtom.Id);
-                        var isSel = State.SelectedAtomId == atom.Id;
-                        var isBuilt = State.GetBuiltCount(atom.Id) > 0;
-                        <line x1="@reqAtom.PositionX" y1="@reqAtom.PositionY"
-                              x2="@atom.PositionX" y2="@atom.PositionY"
-                              stroke="@(isCasc ? "#ff6b6b" : isSel ? "#4aeadc" : isBuilt ? "#1e3a5f" : "#0d1f35")"
-                              stroke-width="@(isCasc ? "3" : isSel ? "2.5" : isBuilt ? "1.5" : "0.7")"
-                              filter="@(isCasc ? "url(#glow)" : "none")"
-                              opacity="@(isBuilt ? "0.9" : "0.35")" />
-                    }
                 }
 
-                @foreach (var atom in AvailableAtoms)
+                <!-- Scenario modal -->
+                @if (State.Phase == GamePhase.Scenario && State.ActiveScenario is Scenario s)
                 {
-                    var isCasc = State.Cascading.GetValueOrDefault(atom.Id);
-                    var isSel = State.SelectedAtomId == atom.Id;
-                    var count = State.GetBuiltCount(atom.Id);
-                    var price = State.GetPrice(atom);
-                    var eraColor = Config.ErasById.GetValueOrDefault(atom.EraId)?.Color ?? "#1a3050";
-                    var r = isSel ? 54 : 48;
-
-                    <g data-node @onclick="() => SelectAtom(atom.Id)" style="cursor: pointer;">
-                        @if (count > 0)
-                        {
-                            <circle cx="@atom.PositionX" cy="@atom.PositionY" r="64"
-                                    fill="none" stroke="@eraColor" stroke-width="1" opacity="0.2" class="breathe" />
-                        }
-                        <circle cx="@atom.PositionX" cy="@atom.PositionY" r="@r"
-                                fill="@(isCasc ? "#ff6b6b10" : isSel ? "#4aeadc10" : count > 0 ? "#0a1e36" : "#060e1a")"
-                                stroke="@(isCasc ? "#ff6b6b" : isSel ? "#4aeadc" : count > 0 ? eraColor : "#1a3050")"
-                                stroke-width="@(isCasc ? "3" : isSel ? "3" : count > 0 ? "2" : "1")"
-                                filter="@(isCasc ? "url(#glow)" : isSel ? "url(#softglow)" : "none")" />
-                        @((MarkupString)$"<text x=\"{atom.PositionX}\" y=\"{atom.PositionY}\" text-anchor=\"middle\" font-size=\"34\" dominant-baseline=\"central\">{atom.Icon}</text>")
-                        @((MarkupString)$"<text x=\"{atom.PositionX}\" y=\"{atom.PositionY + 62}\" text-anchor=\"middle\" font-size=\"14\" fill=\"{(isCasc ? "#ff6b6b" : "#6b8aaa")}\" font-family=\"'JetBrains Mono', monospace\" font-weight=\"500\">{atom.Name}</text>")
-                        @((MarkupString)$"<text x=\"{atom.PositionX}\" y=\"{atom.PositionY + 78}\" text-anchor=\"middle\" font-size=\"12\" fill=\"{(isCasc ? "#ff6b6b" : "#3a5a7a")}\" font-family=\"'JetBrains Mono', monospace\">${EconomyEngine.FormatNumber(price)}</text>")
-                        @if (count > 0)
-                        {
-                            <rect x="@(atom.PositionX + 30)" y="@(atom.PositionY - 42)" width="28" height="18" rx="9" fill="#4aeadc" opacity="0.9" />
-                            @((MarkupString)$"<text x=\"{atom.PositionX + 44}\" y=\"{atom.PositionY - 33}\" text-anchor=\"middle\" dominant-baseline=\"central\" font-size=\"11\" fill=\"#04151e\" font-family=\"'JetBrains Mono', monospace\" font-weight=\"700\">×{count}</text>")
-                        }
-                        @if (atom.PopGain > 0 && count > 0)
-                        {
-                            <rect x="@(atom.PositionX - 58)" y="@(atom.PositionY - 42)" width="36" height="18" rx="9" fill="#818cf8" opacity="0.8" />
-                            @((MarkupString)$"<text x=\"{atom.PositionX - 40}\" y=\"{atom.PositionY - 33}\" text-anchor=\"middle\" dominant-baseline=\"central\" font-size=\"11\" fill=\"#e0e0ff\" font-family=\"'JetBrains Mono', monospace\" font-weight=\"600\">+{atom.PopGain}</text>")
-                        }
-                    </g>
-                }
-            </svg>
-        </div>
-
-        <!-- BOTTOM DRAWER -->
-        @if (State.DrawerOpen && SelectedAtom is Atom sel)
-        {
-            var deps = Config.GetDependencies(sel.Id);
-            var cost = State.GetBuildCost(sel, Config);
-            var canBuild = State.Gold >= cost && (deps.Count > 0 || sel.PopGain > 0);
-
-            <div class="drawer open">
-                <div class="drawer-handle" @onclick="CloseDrawer"><div class="drawer-pill"></div></div>
-                <div class="drawer-content">
-                    <div class="drawer-header">
-                        <span class="drawer-icon">@sel.Icon</span>
-                        <div>
-                            <div class="drawer-title">@sel.Name</div>
-                            <div class="drawer-meta">
-                                @if (sel.PopGain > 0)
+                    var character = Config.CharsById.GetValueOrDefault(s.CharacterId);
+                    var choices = Config.GetChoices(s.Id);
+                    <div class="overlay">
+                        <div class="scenario-card">
+                            <span class="bracket tl"></span><span class="bracket tr"></span>
+                            <span class="bracket bl"></span><span class="bracket br"></span>
+                            <div class="scanline"></div>
+                            <button class="scenario-close" @onclick="DismissIssue">✕</button>
+                            <div class="scenario-head">
+                                <span class="scenario-char-icon">@(character?.Icon ?? "❓")</span>
+                                <div>
+                                    <div class="scenario-char-name">@(character?.Name ?? "Unknown")</div>
+                                    <div class="scenario-char-role">@(character?.Role ?? "")</div>
+                                </div>
+                            </div>
+                            <p class="scenario-text">@s.Text</p>
+                            <div class="scenario-choices">
+                                @foreach (var choice in choices)
                                 {
-                                    <span class="pop-tag">+@sel.PopGain pop</span>
-                                }
-                                @if (State.GetBuiltCount(sel.Id) > 0)
-                                {
-                                    <span class="built-tag">Built ×@State.GetBuiltCount(sel.Id)</span>
+                                    var cid = choice.Id;
+                                    <button class="choice-btn" @onclick="() => HandleChoice(cid)">
+                                        @choice.Label
+                                    </button>
                                 }
                             </div>
                         </div>
                     </div>
+                }
 
-                    @if (deps.Count > 0)
+                <!-- Stock View overlay -->
+                @if (_stockViewAtomId is int svId && Config.AtomsById.TryGetValue(svId, out var svAtom))
+                {
+                    var svHistory = State.PriceHistory;
+                    var svPrices = GetPaddedPrices(svId, svAtom.BasePrice);
+                    var ghostPrices = BuildGhostSeries(svId, svPrices, svHistory.Count);
+                    if (svPrices.Count >= 2)
                     {
-                        <div class="deps-grid">
-                            @foreach (var dep in deps)
+                        var compPrices = _compareAtomId.HasValue ? svHistory.Select(h => h.Prices.GetValueOrDefault(_compareAtomId.Value, 0)).ToList() : new List<int>();
+                        var allVals = svPrices.Concat(compPrices).Concat(ghostPrices).Where(v => v > 0).ToList();
+                        var svMin = Math.Max(0, allVals.Min() - 1); var svMax = allVals.Max() + 1; var svRange = Math.Max(svMax - svMin, 1);
+                        var svFirst = svPrices[0]; var svLast = svPrices[^1];
+                        var svTrend = svLast > svFirst ? "#4ae08a" : svLast < svFirst ? "#ff5648" : "#6a7a94";
+                        var svPct = svFirst > 0 ? (int)Math.Round(((double)(svLast - svFirst) / svFirst) * 100) : 0;
+                        var W = 580; var H = 260; var padX = 46; var padY = 28; var padBot = 36;
+                        var chartW = W - padX * 2; var chartH = H - padY - padBot;
+
+                        // Coordinate helpers (inline lambdas, not local functions)
+                        var svCount = svPrices.Count;
+                        Func<int, double> txd = i => (double)padX + (double)i / Math.Max(1, svCount - 1) * chartW;
+                        Func<int, double> tyd = v => (double)padY + (1.0 - (double)(v - svMin) / svRange) * chartH;
+                        Func<int, string> tx = i => txd(i).ToString("F1");
+                        Func<int, string> ty = v => tyd(v).ToString("F1");
+
+                        var mainPath = BuildSmoothPath(svPrices, padX, chartW, padY, chartH, svMin, svRange, svCount);
+                        var ghostPath = ghostPrices.Count >= 2 ? BuildSmoothPath(ghostPrices, padX, chartW, padY, chartH, svMin, svRange, svCount) : "";
+                        var mainFillPath = mainPath + $" L {txd(svPrices.Count - 1):F1},{padY + chartH} L {padX},{padY + chartH} Z";
+
+                        var compPath = "";
+                        var compFillPath = "";
+                        var compColor = "#4a9ade";
+                        if (_compareAtomId.HasValue && compPrices.Count >= 2)
+                        {
+                            compPath = BuildSmoothPath(compPrices, padX, chartW, padY, chartH, svMin, svRange, compPrices.Count);
+                            compFillPath = compPath + $" L {txd(compPrices.Count - 1):F1},{padY + chartH} L {padX},{padY + chartH} Z";
+                        }
+
+                        // Grid
+                        var gridStep = svRange / 4.0;
+                        var vGridCount = Math.Min(6, svPrices.Count);
+                        var vGridStep = Math.Max(1, svPrices.Count / vGridCount);
+
+                        // Decision event markers — tappable, with this atom's multiplier
+                        var choiceEvents = State.ChoiceEvents ?? new List<ChoiceEvent>();
+                        var eventMarkers = new List<MarkerInfo>();
+                        foreach (var ev in choiceEvents.Where(e => e.Turn >= 1 && e.Turn <= svPrices.Count))
+                        {
+                            double? evMult = null; string? evLu = null, evLl = null;
+                            if (ev.ChoiceId != 0)
+                            {
+                                var evCh = Config.Choices.FirstOrDefault(x => x.Id == ev.ChoiceId);
+                                if (evCh != null)
+                                {
+                                    var (evImm, evDel) = Config.GetEffects(ev.ChoiceId);
+                                    double m = 1; bool any = false;
+                                    foreach (var e in evImm.Concat(evDel).Where(e => e.AtomId == svId)) { m *= e.Multiplier; any = true; }
+                                    if (any) evMult = m;
+                                    evLu = evCh.LearnUrl; evLl = evCh.LearnLabel;
+                                }
+                            }
+                            eventMarkers.Add(new MarkerInfo { Turn = ev.Turn, Label = ev.Label, Mult = evMult, X = txd(Math.Min(ev.Turn - 1, svPrices.Count - 1)), LearnUrl = evLu, LearnLabel = evLl });
+                        }
+
+                        // Only unlocked atoms for comparison
+                        var comparables = AvailableAtoms.Where(a => a.Id != svId).ToList();
+
+                        <div class="overlay" @onclick="CloseStockView">
+                            <div class="stock-card" @onclick:stopPropagation="true">
+                                <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+                                    <div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;background:var(--orange-pale);border:2px solid var(--border);border-radius:var(--r-md);">
+                                        <span style="font-size:24px;">@svAtom.Icon</span>
+                                    </div>
+                                    <div style="flex:1;">
+                                        <div style="font-size:18px;font-weight:900;color:var(--text-dark);">@svAtom.Name</div>
+                                        <div style="display:flex;align-items:baseline;gap:6px;">
+                                            <span style="font-size:20px;font-weight:800;color:@svTrend;">$@svLast</span>
+                                            <span style="font-size:13px;font-weight:700;color:@svTrend;background:@(svLast >= svFirst ? "var(--green-pale)" : "var(--red-pale)");padding:2px 8px;border-radius:var(--r-full);">@(svPct >= 0 ? "▲" : "▼") @Math.Abs(svPct)%</span>
+                                        </div>
+                                    </div>
+                                    <button class="stock-close" @onclick="CloseStockView">✕</button>
+                                </div>
+
+                                <div class="stock-chart-wrap">
+                                    <svg viewBox="0 0 @W @H" style="width:100%;height:auto;display:block;overflow:visible;">
+                                        <defs>
+                                            <linearGradient id="sv-fill-main" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stop-color="@svTrend" stop-opacity="0.2" />
+                                                <stop offset="100%" stop-color="@svTrend" stop-opacity="0.02" />
+                                            </linearGradient>
+                                            @if (!string.IsNullOrEmpty(compPath))
+                                            {
+                                                <linearGradient id="sv-fill-comp" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stop-color="@compColor" stop-opacity="0.12" />
+                                                    <stop offset="100%" stop-color="@compColor" stop-opacity="0.01" />
+                                                </linearGradient>
+                                            }
+                                        </defs>
+
+                                        @for (int g = 0; g <= 4; g++)
+                                        {
+                                            var gVal = (int)(svMin + g * gridStep);
+                                            var gY = tyd(gVal);
+                                            <line x1="@padX" y1="@gY.ToString("F1")" x2="@(W - padX)" y2="@gY.ToString("F1")"
+                                                  stroke="var(--border)" stroke-width="0.5" stroke-dasharray="3,3" opacity="0.5" />
+                                            @((MarkupString)$"<text x=\"{padX - 6}\" y=\"{gY + 3:F1}\" text-anchor=\"end\" font-size=\"9\" fill=\"#6a7a94\" font-family=\"'JetBrains Mono', monospace\">${gVal}</text>")
+                                        }
+
+                                        @for (int vg = 0; vg <= vGridCount; vg++)
+                                        {
+                                            var vIdx = Math.Min(vg * vGridStep, svPrices.Count - 1);
+                                            var vx = txd(vIdx);
+                                            <line x1="@vx.ToString("F1")" y1="@padY" x2="@vx.ToString("F1")" y2="@(padY + chartH)"
+                                                  stroke="var(--border)" stroke-width="0.5" stroke-dasharray="3,3" opacity="0.3" />
+                                            @((MarkupString)$"<text x=\"{vx:F1}\" y=\"{padY + chartH + 14}\" text-anchor=\"middle\" font-size=\"9\" fill=\"#6a7a94\" font-family=\"'JetBrains Mono', monospace\">T{vIdx + 1}</text>")
+                                        }
+
+                                        @foreach (var em in eventMarkers)
+                                        {
+                                            var mk = em;
+                                            var hit = mk.Mult.HasValue;
+                                            <line x1="@mk.X.ToString("F1")" y1="@padY" x2="@mk.X.ToString("F1")" y2="@(padY + chartH)"
+                                                  stroke="var(--orange)" stroke-width="1" stroke-dasharray="4,3" opacity="@(hit ? "0.55" : "0.18")" />
+                                            <g style="cursor:pointer;" @onclick="() => _selectedMarker = mk" @onclick:stopPropagation="true">
+                                                <circle cx="@mk.X.ToString("F1")" cy="@padY" r="18" fill="transparent" />
+                                                @if (hit)
+                                                {
+                                                    <circle cx="@mk.X.ToString("F1")" cy="@padY" r="11" fill="none" stroke="var(--orange)" stroke-width="1" opacity="0.35" class="chart-marker-halo" />
+                                                }
+                                                <circle cx="@mk.X.ToString("F1")" cy="@padY" r="@(hit ? 6.5 : 3)" fill="var(--orange)" opacity="@(hit ? "0.95" : "0.35")"
+                                                        class="@(hit ? "chart-marker-pulse" : "")" />
+                                            </g>
+                                            @if (hit)
+                                            {
+                                                @((MarkupString)$"<text x=\"{mk.X + 7:F1}\" y=\"{padY + 10}\" font-size=\"8\" fill=\"#d4a843\" font-family=\"'Rajdhani', sans-serif\" font-weight=\"700\" opacity=\"0.75\">{(mk.Label.Length > 16 ? mk.Label.Substring(0, 16) + "…" : mk.Label)}</text>")
+                                            }
+                                        }
+
+                                        @if (!string.IsNullOrEmpty(ghostPath))
+                                        {
+                                            <path d="@ghostPath" fill="none" stroke="#8aa4c8" stroke-width="1.5"
+                                                  stroke-dasharray="5,4" stroke-linecap="round" opacity="0.55" />
+                                            @((MarkupString)$"<text x=\"{W - padX}\" y=\"{tyd(ghostPrices[^1]) - 7:F1}\" text-anchor=\"end\" font-size=\"8\" fill=\"#8aa4c8\" font-family=\"'Rajdhani', sans-serif\" font-weight=\"700\" letter-spacing=\"2\" opacity=\"0.8\">THE UNSEEN</text>")
+                                        }
+
+                                        @if (!string.IsNullOrEmpty(compPath))
+                                        {
+                                            <path d="@compFillPath" fill="url(#sv-fill-comp)" />
+                                            <path d="@compPath" fill="none" stroke="@compColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.7" />
+                                        }
+
+                                        <path d="@mainFillPath" fill="url(#sv-fill-main)" />
+                                        <path d="@mainPath" fill="none" stroke="@svTrend" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+                                        <circle cx="@tx(svPrices.Count - 1)" cy="@ty(svLast)" r="4.5" fill="@svTrend" stroke="var(--bg-card)" stroke-width="2" />
+                                        <circle cx="@tx(0)" cy="@ty(svFirst)" r="3" fill="@svTrend" opacity="0.5" />
+                                    </svg>
+                                </div>
+
+                                @if (_selectedMarker is MarkerInfo selMk)
+                                {
+                                    <div class="marker-info">
+                                        <div style="flex:1;min-width:0;">
+                                            <div class="marker-info-title">T@(selMk.Turn) · @selMk.Label</div>
+                                            <div class="marker-info-sub">@(selMk.Mult is double selMult ? $"×{selMult:0.##} on {svAtom.Name}" : "No direct effect on this good")</div>
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(selMk.LearnUrl))
+                                        {
+                                            <button class="learn-btn" @onclick="() => OpenLearnUrl(selMk.LearnUrl)">⌕ @(string.IsNullOrWhiteSpace(selMk.LearnLabel) ? "Learn why" : selMk.LearnLabel)</button>
+                                        }
+                                        <button class="stock-close" style="width:28px;height:28px;flex-shrink:0;" @onclick="() => _selectedMarker = null">✕</button>
+                                    </div>
+                                }
+
+                                @if (!string.IsNullOrEmpty(ghostPath))
+                                {
+                                    <div class="unseen-caption">The dashed line is the timeline without your decisions.</div>
+                                }
+
+                                @if (_compareAtomId.HasValue && Config.AtomsById.TryGetValue(_compareAtomId.Value, out var compAtom))
+                                {
+                                    <div style="display:flex;gap:16px;padding:6px 4px 10px;font-size:11px;font-weight:700;">
+                                        <div style="display:flex;align-items:center;gap:5px;">
+                                            <div style="width:12px;height:3px;border-radius:2px;background:@svTrend;"></div>
+                                            <span style="color:var(--text-muted);">@svAtom.Name</span>
+                                        </div>
+                                        <div style="display:flex;align-items:center;gap:5px;">
+                                            <div style="width:12px;height:3px;border-radius:2px;background:@compColor;"></div>
+                                            <span style="color:var(--text-muted);">@compAtom.Name</span>
+                                            <button style="background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;font-weight:800;padding:0 4px;" @onclick="() => _compareAtomId = null">✕</button>
+                                        </div>
+                                    </div>
+                                }
+
+                                <div class="stock-compare">
+                                    <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;font-weight:800;">COMPARE WITH</div>
+                                    <div class="stock-compare-grid">
+                                        @foreach (var ca2 in comparables)
+                                        {
+                                            var cId = ca2.Id;
+                                            <button class="stock-compare-chip @(_compareAtomId == cId ? "active" : "")"
+                                                    @onclick="() => _compareAtomId = _compareAtomId == cId ? null : cId">
+                                                <span style="font-size:14px;">@ca2.Icon</span>
+                                                <span style="font-size:10px;">@ca2.Name</span>
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                }
+
+                <!-- ATOM GRAPH -->
+                <div class="graph-area" id="graphArea">
+                    <div class="graph-glow"></div>
+                    <svg viewBox="0 0 660 @MapH" preserveAspectRatio="xMidYMin meet" class="atom-svg" id="atomSvg"
+                         style="transform: translate(@(_panX)px, @(_panY)px) scale(@_zoom); transform-origin: center top; cursor: grab;">
+                        <defs>
+                            <filter id="glow"><feGaussianBlur stdDeviation="4" result="g" /><feMerge><feMergeNode in="g" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+                            <filter id="softglow"><feGaussianBlur stdDeviation="6" result="g" /><feMerge><feMergeNode in="g" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+                            <linearGradient id="eraBands" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0" stop-color="@Config.Eras[0].Color" stop-opacity="0" />
+                                @for (int ei = 0; ei < VisibleBands; ei++)
+                                {
+                                    var off = ((ei * BandH + BandH / 2.0) / MapH).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+                                    <stop offset="@off" stop-color="@Config.Eras[ei].Color" stop-opacity="0.13" />
+                                }
+                                <stop offset="1" stop-color="@Config.Eras[Math.Max(0, VisibleBands - 1)].Color" stop-opacity="0" />
+                            </linearGradient>
+                            <linearGradient id="edgeFadeX" x1="0" y1="0" x2="1" y2="0">
+                                <stop offset="0" stop-color="#fff" stop-opacity="0" />
+                                <stop offset="0.12" stop-color="#fff" stop-opacity="1" />
+                                <stop offset="0.88" stop-color="#fff" stop-opacity="1" />
+                                <stop offset="1" stop-color="#fff" stop-opacity="0" />
+                            </linearGradient>
+                            <mask id="eraBandMask">
+                                <rect x="0" y="0" width="660" height="@MapH" fill="url(#edgeFadeX)" />
+                            </mask>
+                        </defs>
+
+                        <!-- Era light: one continuous gradient, colors cross-fading between eras -->
+                        <rect class="era-glow" x="0" y="0" width="660" height="@MapH"
+                              fill="url(#eraBands)" mask="url(#eraBandMask)" pointer-events="none" />
+
+                        <!-- Edges -->
+                        @foreach (var atom in AvailableAtoms)
+                        {
+                            var deps = Config.GetDependencies(atom.Id);
+                            foreach (var dep in deps)
                             {
                                 if (!Config.AtomsById.TryGetValue(dep.RequiresAtomId, out var reqAtom)) continue;
-                                var depPrice = State.GetPrice(reqAtom);
-                                <div class="dep-chip">
-                                    <span class="dep-emoji">@reqAtom.Icon</span>
-                                    <div>
-                                        <div class="dep-name">@reqAtom.Name ×@dep.Quantity</div>
-                                        <div class="dep-cost">$@EconomyEngine.FormatNumber(depPrice * dep.Quantity)</div>
+                                if (!AvailableAtoms.Contains(reqAtom)) continue;
+                                var isCasc = State.Cascading.GetValueOrDefault(atom.Id) || State.Cascading.GetValueOrDefault(reqAtom.Id);
+                                var isSel = State.SelectedAtomId == atom.Id;
+                                var isBuilt = State.GetBuiltCount(atom.Id) > 0;
+                                <line x1="@reqAtom.PositionX" y1="@RY(reqAtom)"
+                                      x2="@atom.PositionX" y2="@RY(atom)"
+                                      stroke="@(isCasc ? "#ff5648" : isSel ? "#d4a843" : isBuilt ? "#4a6288" : "rgba(96,150,200,0.35)")"
+                                      stroke-width="@(isCasc ? "3" : isSel ? "2.5" : isBuilt ? "1.5" : "0.7")"
+                                      filter="@(isCasc ? "url(#glow)" : "none")"
+                                      opacity="@(isBuilt ? "0.9" : "0.35")" />
+                            }
+                        }
+
+                        <!-- Nodes -->
+                        @foreach (var atom in AvailableAtoms)
+                        {
+                            var isCasc = State.Cascading.GetValueOrDefault(atom.Id);
+                            var isSel = State.SelectedAtomId == atom.Id;
+                            var count = State.GetBuiltCount(atom.Id);
+                            var price = State.GetPrice(atom);
+                            var eraColor = Config.ErasById.GetValueOrDefault(atom.EraId)?.Color ?? "#3a5070";
+                            var r = isSel ? 54 : 48;
+
+                            <g data-node @onclick="() => SelectAtom(atom.Id)" style="cursor: pointer;">
+                                @if (count > 0)
+                                {
+                                    <polygon points="@HexPts(atom.PositionX, RY(atom), 64)"
+                                             fill="none" stroke="@eraColor" stroke-width="1" opacity="0.2" class="breathe" />
+                                }
+                                <polygon points="@HexPts(atom.PositionX, RY(atom), r)"
+                                         fill="@(isCasc ? "rgba(255,86,72,0.08)" : isSel ? "rgba(212,160,32,0.08)" : count > 0 ? "rgba(12,26,46,0.92)" : "rgba(10,22,38,0.85)")"
+                                         stroke="@(isCasc ? "#ff5648" : isSel ? "#d4a843" : count > 0 ? eraColor : "rgba(96,150,200,0.4)")"
+                                         stroke-width="@(isCasc ? "2.5" : isSel ? "2.5" : count > 0 ? "1.8" : "1")"
+                                         filter="@(isCasc ? "url(#glow)" : isSel ? "url(#softglow)" : "none")" />
+                                @((MarkupString)$"<text x=\"{atom.PositionX}\" y=\"{RY(atom)}\" text-anchor=\"middle\" font-size=\"34\" dominant-baseline=\"central\">{atom.Icon}</text>")
+                                @((MarkupString)$"<text x=\"{atom.PositionX}\" y=\"{RY(atom) + 62}\" text-anchor=\"middle\" font-size=\"15\" fill=\"{(isCasc ? "#ff5648" : "#9ab4d4")}\" font-family=\"'Rajdhani', sans-serif\" font-weight=\"600\" letter-spacing=\"1\">{atom.Name}</text>")
+                                @((MarkupString)$"<text x=\"{atom.PositionX}\" y=\"{RY(atom) + 78}\" text-anchor=\"middle\" font-size=\"12\" fill=\"{(isCasc ? "#ff5648" : "#6a7a94")}\" font-family=\"'JetBrains Mono', monospace\">${EconomyEngine.FormatNumber(price)}</text>")
+                                @if (count > 0)
+                                {
+                                    <rect x="@(atom.PositionX + 30)" y="@(RY(atom) - 42)" width="28" height="18" rx="2" fill="#d4a020" opacity="0.95" />
+                                    @((MarkupString)$"<text x=\"{atom.PositionX + 44}\" y=\"{RY(atom) - 33}\" text-anchor=\"middle\" dominant-baseline=\"central\" font-size=\"11\" fill=\"#1a1408\" font-family=\"'JetBrains Mono', monospace\" font-weight=\"700\">×{count}</text>")
+                                }
+                                @if (atom.PopGain > 0 && count > 0)
+                                {
+                                    <rect x="@(atom.PositionX - 58)" y="@(RY(atom) - 42)" width="36" height="18" rx="2" fill="#3e5a80" opacity="0.9" />
+                                    @((MarkupString)$"<text x=\"{atom.PositionX - 40}\" y=\"{RY(atom) - 33}\" text-anchor=\"middle\" dominant-baseline=\"central\" font-size=\"11\" fill=\"#cfe2ff\" font-family=\"'JetBrains Mono', monospace\" font-weight=\"600\">+{atom.PopGain}</text>")
+                                }
+                            </g>
+                        }
+                    </svg>
+                </div>
+
+                <!-- BOTTOM DRAWER -->
+                @if (State.DrawerOpen && SelectedAtom is Atom sel)
+                {
+                    var deps = Config.GetDependencies(sel.Id);
+                    var cost = State.GetBuildCost(sel, Config);
+                    var canBuild = State.Gold >= cost && (deps.Count > 0 || sel.PopGain > 0);
+
+                    <div class="drawer-scrim" @onclick="CloseDrawer"></div>
+                    <div class="drawer open">
+                        <div class="drawer-handle" @onclick="CloseDrawer" @ontouchstart="DrawerTouchStart" @ontouchmove="DrawerTouchMove"><div class="drawer-pill"></div></div>
+                        <div class="drawer-content">
+                            <div class="drawer-header" @ontouchstart="DrawerTouchStart" @ontouchmove="DrawerTouchMove">
+                                <span class="drawer-icon">@sel.Icon</span>
+                                <div>
+                                    <div class="drawer-title">@sel.Name</div>
+                                    <div class="drawer-meta">
+                                        @if (sel.PopGain > 0)
+                                        {
+                                            <span class="pop-tag">+@sel.PopGain pop</span>
+                                        }
+                                        @if (State.GetBuiltCount(sel.Id) > 0)
+                                        {
+                                            <span class="built-tag">Built ×@State.GetBuiltCount(sel.Id)</span>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+
+                            @if (deps.Count > 0)
+                            {
+                                <div class="deps-grid">
+                                    @foreach (var dep in deps)
+                                    {
+                                        if (!Config.AtomsById.TryGetValue(dep.RequiresAtomId, out var reqAtom)) continue;
+                                        var depPrice = State.GetPrice(reqAtom);
+                                        <div class="dep-chip">
+                                            <span class="dep-emoji">@reqAtom.Icon</span>
+                                            <div>
+                                                <div class="dep-name">@reqAtom.Name ×@dep.Quantity</div>
+                                                <div class="dep-cost">$@EconomyEngine.FormatNumber(depPrice * dep.Quantity)</div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="dep-chip" style="justify-content:center">
+                                    <span class="dep-cost">Base resource · $@EconomyEngine.FormatNumber(State.GetPrice(sel))</span>
+                                </div>
+                            }
+
+                            <!-- Sparkline -->
+                            <div class="sparkline-wrap" @onclick="() => OpenStockView(sel.Id)">
+                                @{
+                                    var spPrices = GetPaddedPrices(sel.Id, sel.BasePrice);
+                                    var spMin = spPrices.Min(); var spMax = spPrices.Max(); var spRange = Math.Max(spMax - spMin, 1);
+                                    var spFirst = spPrices[0]; var spLast = spPrices[^1];
+                                    var spTrend = spLast > spFirst ? "#4ae08a" : spLast < spFirst ? "#ff5648" : "#6a7a94";
+                                    var spPct = spFirst > 0 ? (int)Math.Round(((double)(spLast - spFirst) / spFirst) * 100) : 0;
+                                    var spW = 200.0; var spH = 40.0; var spPad = 4.0;
+                                    var spPath = BuildSmoothPath(spPrices, 0, spW, spPad, spH - spPad * 2, spMin, spRange, spPrices.Count);
+                                    var spFillPath = spPath + $" L {spW:F1},{spH} L 0,{spH} Z";
+                                }
+                                <div class="sparkline-header">
+                                    <span class="sparkline-label">PRICE HISTORY</span>
+                                    <span style="font-size:11px;color:@spTrend;font-weight:700;">@(spPct >= 0 ? "+" : "")@(spPct)%</span>
+                                </div>
+                                <svg viewBox="0 0 @spW @spH" style="width:100%;height:40px;display:block;">
+                                    <defs>
+                                        <linearGradient id="spark-fill-@sel.Id" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stop-color="@spTrend" stop-opacity="0.2" />
+                                            <stop offset="100%" stop-color="@spTrend" stop-opacity="0" />
+                                        </linearGradient>
+                                    </defs>
+                                    <path d="@spFillPath" fill="url(#spark-fill-@sel.Id)" />
+                                    <path d="@spPath" fill="none" stroke="@spTrend" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                <div class="sparkline-hint">Tap for full chart →</div>
+                            </div>
+
+                            @{
+                                var anat = GetInfluences(sel.Id, AnatomyWindowTurns).Take(3).ToList();
+                            }
+                            @if (anat.Count > 0)
+                            {
+                                <div class="anatomy">
+                                    <div class="anatomy-title">Price anatomy</div>
+                                    <div class="anatomy-row anatomy-base">
+                                        <span class="anatomy-label">Base price</span>
+                                        <span class="anatomy-mult">$@sel.BasePrice</span>
+                                    </div>
+                                    @foreach (var inf in anat)
+                                    {
+                                        var infLocal = inf;
+                                        <div class="anatomy-row">
+                                            <span class="anatomy-turn">T@(infLocal.ApplyTurn)</span>
+                                            <span class="anatomy-label">@(infLocal.Label.Length > 24 ? infLocal.Label.Substring(0, 24) + "…" : infLocal.Label)@(infLocal.IsDelayed ? " ⏳" : "")</span>
+                                            <span class="anatomy-mult @(infLocal.Mult >= 1 ? "up" : "down")">×@infLocal.Mult.ToString("0.##")</span>
+                                            @if (!string.IsNullOrWhiteSpace(infLocal.LearnUrl))
+                                            {
+                                                <button class="learn-btn learn-btn-sm" @onclick="() => OpenLearnUrl(infLocal.LearnUrl)">⌕</button>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+
+                            <div class="drawer-footer">
+                                <div class="total-label">Total: <span class="@(canBuild ? "accent" : "danger")">$@EconomyEngine.FormatNumber(cost)</span></div>
+                                @if (deps.Count > 0 || sel.PopGain > 0)
+                                {
+                                    var buildMax = cost > 0 ? (int)Math.Min(999, State.Gold / cost) : 0;
+                                    <div class="build-group">
+                                        @if (_buildMenuOpen && buildMax >= 2)
+                                        {
+                                            <div class="build-menu">
+                                                @if (buildMax >= 10)
+                                                {
+                                                    <button class="build-menu-item" @onclick="() => BuildMany(sel.Id, 10)">Build ×10 · $@EconomyEngine.FormatNumber(cost * 10)</button>
+                                                }
+                                                <button class="build-menu-item" @onclick="() => BuildMany(sel.Id, buildMax)">Build Max ×@buildMax · $@EconomyEngine.FormatNumber(cost * buildMax)</button>
+                                            </div>
+                                        }
+                                        <button class="build-btn build-btn-main" disabled="@(!canBuild)" @onclick="() => BuildAtom(sel.Id)">
+                                            @(canBuild ? $"BUILD · ${EconomyEngine.FormatNumber(cost)}" : $"NEED ${EconomyEngine.FormatNumber(cost)}")
+                                        </button>
+                                        @if (buildMax >= 2)
+                                        {
+                                            <button class="build-caret @(_buildMenuOpen ? "open" : "")" @onclick="() => _buildMenuOpen = !_buildMenuOpen">▾</button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+            else if (_activeTab == Tab.City)
+            {
+                <div class="city-view">
+                    @{
+                        var f = State.ComputeFreedomScore();
+                        var totalBuildings = State.Built.Values.Sum();
+                        var fCirc = 2 * Math.PI * 45;
+                        var fOff = fCirc * (1 - f.Score / 100.0);
+                    }
+                    <div class="city-card city-header">
+                        <div style="font-size:40px;margin-bottom:8px;">🏛️</div>
+                        <div class="city-name">@State.CityName</div>
+                        <div class="city-sub">@CurrentEra.Name · Turn @State.Turn</div>
+                    </div>
+
+                    <div class="city-card">
+                        <div class="liberty-ring-large">
+                            <svg width="110" height="110">
+                                <circle cx="55" cy="55" r="45" fill="none" stroke="#3a5070" stroke-width="6" />
+                                <circle cx="55" cy="55" r="45" fill="none" stroke="@(f.Score >= 70 ? "#d4a843" : f.Score >= 40 ? "#d4a843" : "#ff5648")"
+                                        stroke-width="6" stroke-dasharray="@fCirc.ToString("F1")" stroke-dashoffset="@fOff.ToString("F1")" stroke-linecap="round" />
+                            </svg>
+                            <span class="liberty-score-large">@f.Score</span>
+                        </div>
+                        <div class="liberty-grade">Liberty Index · @f.Title · Grade @f.Grade</div>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value">@EconomyEngine.FormatNumber(State.Population)</div>
+                            <div class="stat-label">Citizens</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">$@EconomyEngine.FormatNumber(State.Gold)</div>
+                            <div class="stat-label">Treasury</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">@totalBuildings</div>
+                            <div class="stat-label">Buildings</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">@State.ChoiceEvents.Count</div>
+                            <div class="stat-label">Decisions</div>
+                        </div>
+                    </div>
+
+                    <!-- Economic Index: the seen and the unseen, aggregated -->
+                    @{
+                        var (idxSeen, idxGhost) = BuildCityIndex();
+                    }
+                    @if (idxSeen.Count >= 2)
+                    {
+                        var iW = 560.0; var iH = 170.0; var iPadX = 40.0; var iPadY = 16.0; var iPadB = 12.0;
+                        var iAll = idxSeen.Concat(idxGhost.Count > 0 ? idxGhost : idxSeen).ToList();
+                        var iMin = Math.Max(0, iAll.Min() - 1); var iMax = iAll.Max() + 1;
+                        var iRange = Math.Max(iMax - iMin, 1);
+                        var iChartW = iW - iPadX * 2; var iChartH = iH - iPadY - iPadB;
+                        var iSeenPath = BuildSmoothPath(idxSeen, iPadX, iChartW, iPadY, iChartH, iMin, iRange, idxSeen.Count);
+                        var iGhostPath = idxGhost.Count >= 2 ? BuildSmoothPath(idxGhost, iPadX, iChartW, iPadY, iChartH, iMin, iRange, idxGhost.Count) : "";
+
+                        <div class="city-card">
+                            <div style="font-size:11px;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;font-weight:800;margin-bottom:10px;">Economic Index</div>
+                            <svg viewBox="0 0 @iW @iH" style="width:100%;height:auto;display:block;">
+                                @if (!string.IsNullOrEmpty(iGhostPath))
+                                {
+                                    <path d="@iGhostPath" fill="none" stroke="#8aa4c8" stroke-width="1.5" stroke-dasharray="5,4" stroke-linecap="round" opacity="0.55" />
+                                }
+                                <path d="@iSeenPath" fill="none" stroke="var(--gold-mid)" stroke-width="2" stroke-linecap="round" />
+                            </svg>
+                            <div class="index-legend">
+                                <span class="index-legend-item"><span class="index-swatch" style="background:var(--gold-mid);"></span>Your timeline</span>
+                                @if (!string.IsNullOrEmpty(iGhostPath))
+                                {
+                                    <span class="index-legend-item"><span class="index-swatch dashed"></span>The unseen</span>
+                                }
+                            </div>
+                            @if (!string.IsNullOrEmpty(iGhostPath))
+                            {
+                                <div class="unseen-caption" style="padding:6px 0 0;">The dashed line is the economy without your decisions.</div>
+                            }
+                        </div>
+                    }
+
+                    <!-- Badge Collection -->
+                    <div class="city-card">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                            <div style="font-size:11px;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;font-weight:800;">Badges</div>
+                            <div style="font-size:11px;color:var(--text-muted);font-weight:700;">
+                                @{
+                                    var earnedBadges = AvailableAtoms.Count(a => GetBadgeTier(a.Id) > 0);
+                                    var totalPossible = AvailableAtoms.Count * 5;
+                                }
+                                @earnedBadges / @totalPossible
+                            </div>
+                        </div>
+                        <div class="badge-grid">
+                            @foreach (var atom in AvailableAtoms)
+                            {
+                                var tier = GetBadgeTier(atom.Id);
+                                var count = State.GetBuiltCount(atom.Id);
+                                var nextT = GetNextThreshold(atom.Id);
+                                var progress = GetBadgeProgress(atom.Id);
+                                var tierColor = BadgeTierColors[tier];
+                                var tierBg = BadgeTierBgColors[tier];
+
+                                <div class="badge-item" style="border-color: @(tier > 0 ? tierColor : "var(--border)");">
+                                    <div class="badge-icon-wrap" style="background: @(tier > 0 ? tierBg : "var(--bg-card-alt)");">
+                                        <span class="badge-atom-icon">@atom.Icon</span>
+                                        @if (tier > 0)
+                                        {
+                                            <span class="badge-tier-dot" style="background: @tierColor;">@BadgeTierEmoji[tier]</span>
+                                        }
+                                    </div>
+                                    <div class="badge-info">
+                                        <div class="badge-atom-name">@atom.Name</div>
+                                        <div class="badge-count">@count / @nextT</div>
+                                        <div class="badge-bar-bg">
+                                            <div class="badge-bar-fill" style="width: @((progress * 100).ToString("F0"))%; background: @(tier > 0 ? tierColor : "var(--border-strong)");"></div>
+                                        </div>
                                     </div>
                                 </div>
                             }
                         </div>
-                    }
-                    else
+                    </div>
+
+                    @if (State.ChoiceEvents.Count > 0)
                     {
-                        <div class="dep-chip" style="justify-content:center">
-                            <span class="dep-cost">Base resource · $@EconomyEngine.FormatNumber(State.GetPrice(sel))</span>
+                        <div class="city-card">
+                            <div style="font-size:11px;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;font-family:'JetBrains Mono',monospace;">Your Decisions</div>
+                            @foreach (var ev in State.ChoiceEvents.Where(e => !string.IsNullOrWhiteSpace(e.Label)))
+                            {
+                                var evChoice = ev.ChoiceId != 0 ? Config.Choices.FirstOrDefault(x => x.Id == ev.ChoiceId) : null;
+                                <div class="decision-item" style="border-left-color:@(ev.FreedomWeight >= 0 ? "var(--gold-line)" : "rgba(255,86,72,0.5)");">
+                                    <div class="decision-turn">T@(ev.Turn)</div>
+                                    <div class="decision-label" style="flex:1;min-width:0;">@ev.Label</div>
+                                    @if (!string.IsNullOrWhiteSpace(evChoice?.LearnUrl))
+                                    {
+                                        <button class="learn-btn learn-btn-sm" @onclick="() => OpenLearnUrl(evChoice.LearnUrl)">⌕</button>
+                                    }
+                                </div>
+                            }
                         </div>
                     }
 
-                    <!-- Sparkline -->
-                    @{
-                        var history = State.PriceHistory;
-                    }
-                    <div class="sparkline-wrap" @onclick="() => OpenStockView(sel.Id)">
-                        @if (history.Count >= 2)
-                        {
-                            var prices = history.Select(h => h.Prices.GetValueOrDefault(sel.Id, sel.BasePrice)).ToList();
-                            var sMin = prices.Min(); var sMax = prices.Max(); var sRange = Math.Max(sMax - sMin, 1);
-                            var first = prices[0]; var last = prices[^1];
-                            var trend = last > first ? "#4ade80" : last < first ? "#ff6b6b" : "#6b8aaa";
-                            var pct = first > 0 ? (int)Math.Round(((double)(last - first) / first) * 100) : 0;
-                            var sW = 200; var sH = 40; var sPad = 4;
-                            var points = string.Join(" ", prices.Select((p, i) =>
-                            {
-                                var sx = (double)i / (prices.Count - 1) * sW;
-                                var sy = sPad + (1.0 - (double)(p - sMin) / sRange) * (sH - sPad * 2);
-                                return $"{sx:F1},{sy:F1}";
-                            }));
-                            var fillPoints = $"0,{sH} {points} {sW},{sH}";
-                            var evMarkers = State.ChoiceEvents
-                                .Where(e => e.AffectedAtomIds.Contains(sel.Id))
-                                .Select(e => { var idx = history.FindIndex(h => h.Turn >= e.Turn); return idx >= 0 ? (double)idx / (history.Count - 1) * sW : -1; })
-                                .Where(x => x >= 0).ToList();
-
-                            <div class="sparkline-header">
-                                <span class="sparkline-label">PRICE HISTORY</span>
-                                <span style="font-size:11px;color:@trend;font-weight:600;font-family:'JetBrains Mono',monospace;">@(pct >= 0 ? "+" : "")@(pct)%</span>
-                            </div>
-                            <svg viewBox="0 0 @sW @sH" style="width:100%;height:40px;display:block;">
-                                <defs>
-                                    <linearGradient id="spark-fill" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stop-color="@trend" stop-opacity="0.2" />
-                                        <stop offset="100%" stop-color="@trend" stop-opacity="0" />
-                                    </linearGradient>
-                                </defs>
-                                <polygon points="@fillPoints" fill="url(#spark-fill)" />
-                                <polyline points="@points" fill="none" stroke="@trend" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-                                @foreach (var mx in evMarkers)
-                                {
-                                    <circle cx="@mx.ToString("F1")" cy="4" r="3" fill="#ffd166" stroke="#04151e" stroke-width="1" />
-                                }
-                            </svg>
-                            <div class="sparkline-hint">Tap for full chart →</div>
-                        }
-                        else
-                        {
-                            <div style="text-align:center;padding:12px 0;font-size:10px;color:#3a5a7a;">No price data yet</div>
-                        }
-                    </div>
-
-                    <div class="drawer-footer">
-                        <div class="total-label">Total: <span class="@(canBuild ? "accent" : "danger")">$@EconomyEngine.FormatNumber(cost)</span></div>
-                        @if (deps.Count > 0 || sel.PopGain > 0)
-                        {
-                            <button class="build-btn" disabled="@(!canBuild)" @onclick="() => Economy.TryBuild(sel.Id)">
-                                @(canBuild ? $"BUILD · ${EconomyEngine.FormatNumber(cost)}" : $"NEED ${EconomyEngine.FormatNumber(cost)}")
-                            </button>
-                        }
-                    </div>
+                    <button class="share-btn" @onclick="ShareCity">SHARE YOUR CITY</button><!--
+                    <div class="sfl-credit">A game by <span>Students For Liberty</span></div>-->
                 </div>
-            </div>
-        }
-
-        <!-- Chronicle -->
-        <div class="chronicle @(_chronicleOpen ? "open" : "")" @onclick="ToggleChronicle">
-            <div class="chronicle-header">
-                <span class="chronicle-label">📜 CHRONICLE</span>
-                <span class="chronicle-toggle">@(_chronicleOpen ? "▾" : "▸")</span>
-            </div>
-            @if (_chronicleOpen)
+            }
+            else if (_activeTab == Tab.Settings)
             {
-                <div class="chronicle-list">
-                    @foreach (var (entry, i) in State.Log.Take(10).Select((e, i) => (e, i)))
+                <!-- ═══ SETTINGS TAB ═══ -->
+                <div class="settings-view">
+                    <div class="city-card">
+                        <div class="settings-section-title">Audio</div>
+                        <div class="settings-row">
+                            <div class="settings-label"><span>🎵</span><span>Music</span></div>
+                            <input type="range" class="settings-slider" min="0" max="100" value="@((int)(_musicVolume * 100))"
+                                   @oninput="OnMusicVolumeChange" />
+                            <span class="settings-val">@((int)(_musicVolume * 100))%</span>
+                        </div>
+                        <div class="settings-row">
+                            <div class="settings-label"><span>🔊</span><span>SFX</span></div>
+                            <input type="range" class="settings-slider" min="0" max="100" value="@((int)(_sfxVolume * 100))"
+                                   @oninput="OnSfxVolumeChange" />
+                            <span class="settings-val">@((int)(_sfxVolume * 100))%</span>
+                        </div>
+                    </div>
+
+                    <div class="city-card">
+                        <div class="settings-section-title">About</div>
+                        <div style="color:var(--text-secondary)">
+                            <h2>UNDER CONSTRUCTION</h2>
+                            <p>v0.5 07/15/2026</p>
+                            <p>TODO: Add privacy policy + Notification settings + Add about SFL section</p>
+                        </div>
+                        <div style="margin-top:12px;font-size:12px;color:var(--text-muted);">Version 1.0.0 · September 2026</div>
+                    </div>
+
+                    <div class="city-card">
+                        <div class="settings-section-title">Beta Tester (Internal)</div>
+                        <div class="beta-row">
+                            <span class="beta-label">User ID</span>
+                            <span class="beta-value beta-guid">@UserId</span>
+                        </div>
+                        <button class="choice-btn" style="margin:6px 0 10px;" @onclick="CopyUserId">@(_userIdCopied ? "✓ Copied" : "Copy User ID")</button>
+                        <div class="beta-row">
+                            <span class="beta-label">Time played (online)</span>
+                            <span class="beta-value">@TimePlayedOnline</span>
+                        </div>
+                        <div class="beta-row">
+                            <span class="beta-label">Time since install</span>
+                            <span class="beta-value">@TimeSinceInstall</span>
+                        </div>
+                        <div class="beta-row">
+                            <span class="beta-label">Era reached</span>
+                            <span class="beta-value">@CurrentEra.Name</span>
+                        </div>
+                        <div class="beta-row">
+                            <span class="beta-label">Issue reached</span>
+                            <span class="beta-value">@LastIssueReached()</span>
+                        </div>
+                        <div class="beta-row">
+                            <span class="beta-label">Badges total</span>
+                            <span class="beta-value">@BadgesTotal</span>
+                        </div>
+                        <div class="beta-row">
+                            <span class="beta-label">Save file</span>
+                            <span class="beta-value">@SaveService.Describe()</span>
+                        </div>
+                        <div class="beta-row">
+                            <span class="beta-label">Save status</span>
+                            <span class="beta-value" style="color:@(string.IsNullOrEmpty(SaveService.LastError) ? "var(--green)" : "var(--red)");">
+                                @(string.IsNullOrEmpty(SaveService.LastError) ? "ok" : SaveService.LastError)
+                            </span>
+                        </div>
+                        <div class="beta-row">
+                            <span class="beta-label">Last restore</span>
+                            <span class="beta-value">@(_restoreNote == "" ? "—" : _restoreNote)</span>
+                        </div>
+                    </div>
+
+                    <div class="city-card">
+                        <div class="settings-section-title">Debug</div><!--
+                        <button class="choice-btn" @onclick="TestBadgeToast">Test badge toast</button>-->
+                        <button class="choice-btn" style="margin-top:8px;" @onclick="RefreshGameData">Check for updates</button>
+                        <button class="choice-btn" style="margin-top:8px;" @onclick="() => _nextIssueUtc = DateTime.UtcNow">Skip issue timer</button>
+                        <button class="choice-btn" style="margin-top:8px;" @onclick="() => SaveService.Save(State, _eraStartUtc, _eraStartPop)">Save now</button>
+                        <button class="choice-btn" style="margin-top:8px;" @onclick="ReplayTutorial">Replay tutorial</button><!--
+                        <button class="choice-btn" style="margin-top:8px;" @onclick="CompleteEraIssues">Complete current era issues</button>-->
+                        <button class="choice-btn" style="margin-top:8px;border-color:rgba(255,86,72,0.4);" @onclick="ResetGame">Reset game (erases save, quits app)</button>
+                        <div style="margin-top:8px;font-size:8px;color:var(--text-muted);line-height:1.7;">
+                            gate @GatedEraIdx · pop-era @Config.GetEraIndex(State.Population) · issues @EraIssuesDone/@EraIssuesTotal · anim @(State.EraUnlockAnimIndex?.ToString() ?? "—") · next-cer @(_lastCeremonyEra + 1)
+                        </div>
+                    </div>
+                    <!--
+                    <div class="sfl-credit">Made with ❤️ by <span>Students For Liberty</span></div>-->
+                </div>
+            }
+
+            <!-- ═══ ISSUE CHIP: the appointment ═══ -->
+            @if (_activeTab == Tab.Map && !State.DrawerOpen && State.Phase != GamePhase.Intro)
+            {
+                <div class="issue-chip @(_issueHeld ? "ringing" : "")" @onclick="IssueChipTap">
+                    @if (_issueHeld)
                     {
-                        <div class="chronicle-item" style="opacity: @(1 - i * 0.08)">@entry</div>
+                        <span class="issue-bang">!</span>
+                    }
+                    else if (EraIssuesRemain)
+                    {
+                        <div class="issue-chip-label">Next issue</div>
+                        <div class="issue-chip-time">@_issueCountdown</div>
+                    }
+                    else
+                    {
+                        <div class="issue-chip-label">Era complete</div>
                     }
                 </div>
             }
+
+            <!-- ═══ ISSUE HISTORY ═══ -->
+            @if (_historyOpen)
+            {
+                <div class="overlay" @onclick="() => _historyOpen = false">
+                    <div class="history-card" @onclick:stopPropagation="true">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                            <div class="chronicle-view-title" style="margin:0;">Decisions</div>
+                            <button class="stock-close" @onclick="() => _historyOpen = false">✕</button>
+                        </div>
+                        @if (State.ChoiceEvents.Count == 0)
+                        {
+                            <div style="text-align:center;padding:32px 10px;color:var(--text-muted);font-size:14px;">No decisions yet. The engine is waiting.</div>
+                        }
+                        @foreach (var ev in State.ChoiceEvents.Where(e => !string.IsNullOrWhiteSpace(e.Label)).Reverse())
+                        {
+                            var evChoice = ev.ChoiceId != 0 ? Config.Choices.FirstOrDefault(x => x.Id == ev.ChoiceId) : null;
+                            <div class="decision-item" style="border-left-color:@(ev.FreedomWeight >= 0 ? "var(--gold-line)" : "rgba(255,86,72,0.5)");">
+                                <div class="decision-turn">T@(ev.Turn)</div>
+                                <div class="decision-label" style="flex:1;min-width:0;">@ev.Label</div>
+                                @if (!string.IsNullOrWhiteSpace(evChoice?.LearnUrl))
+                                {
+                                    <button class="learn-btn learn-btn-sm" @onclick="() => OpenLearnUrl(evChoice.LearnUrl)" @onclick:stopPropagation="true">⌕</button>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- ═══ FAB NAVIGATION ═══ -->
+            @if (_fabOpen)
+            {
+                <div class="fab-scrim" @onclick="() => _fabOpen = false"></div>
+            }
+            @if (!State.DrawerOpen)
+            {
+                <div class="fab-wrap">
+                    @if (_fabOpen)
+                    {
+                        <button class="fab-item fab-item-1" @onclick="() => SelectFabTab(Tab.City)">🏛️<span class="fab-item-label">City</span></button>
+                        <button class="fab-item fab-item-2" @onclick="() => SelectFabTab(Tab.Settings)">⚙️<span class="fab-item-label">Settings</span></button>
+                    }
+                    <button class="fab-core @(_fabOpen ? "open" : "")" @onclick="ToggleFab">
+                        <span class="fab-core-icon">@(_activeTab == Tab.Map ? "⬡" : "🗺️")</span>
+                    </button>
+                </div>
+            }
+
         </div>
-    </div>
+    }
 }
 
 @code {
+    private enum Tab { Map, City, Settings }
+    private enum EraRevealPhase { None, Announcement, ChestReveal }
+
     private bool _loaded;
+    private string? _loadError;
     private double _zoom = 1;
     private double _panX, _panY;
-    private bool _chronicleOpen;
     private int? _stockViewAtomId;
     private int? _compareAtomId;
+    private Tab _activeTab = Tab.Map;
+
+    // ─── Intro sequence ──────────────────────────────────────────────────
+    private enum IntroPhase { Boot, Awakening, Dialogue, Naming, Commit }
+    private IntroPhase _introPhase = IntroPhase.Boot;
+    private int _introLineIdx = -1;
+    private bool _introStarted;
+    private bool _introCanvasReady;
+    private bool _introFading;
+
+    // ─── Save + beta stats ────────────────────────────────────────────────
+    private bool _saveDirty;
+    private int _saveTick;
+    private DateTime _lastTimeFlush = DateTime.UtcNow;
+    private bool _userIdCopied;
+
+    private static string UserId
+    {
+        get
+        {
+            var id = Preferences.Get("aol_user_id", "");
+            if (string.IsNullOrEmpty(id)) { id = Guid.NewGuid().ToString(); Preferences.Set("aol_user_id", id); }
+            return id;
+        }
+    }
+
+    private void FlushTimePlayed()
+    {
+        var now = DateTime.UtcNow;
+        var total = Preferences.Get("aol_time_played_s", 0.0) + (now - _lastTimeFlush).TotalSeconds;
+        Preferences.Set("aol_time_played_s", total);
+        _lastTimeFlush = now;
+    }
+
+    private static string FmtDur(TimeSpan t)
+    {
+        if (t.TotalDays >= 1) return $"{(int)t.TotalDays}d {t.Hours}h";
+        if (t.TotalHours >= 1) return $"{(int)t.TotalHours}h {t.Minutes:D2}m";
+        return $"{(int)t.TotalMinutes}m {t.Seconds:D2}s";
+    }
+
+    private string TimePlayedOnline => FmtDur(TimeSpan.FromSeconds(
+        Preferences.Get("aol_time_played_s", 0.0) + (DateTime.UtcNow - _lastTimeFlush).TotalSeconds));
+
+    private string TimeSinceInstall
+    {
+        get
+        {
+            var ticks = Preferences.Get("aol_first_launch_ticks", 0L);
+            if (ticks == 0) return "—";
+            return FmtDur(DateTime.UtcNow - new DateTime(ticks, DateTimeKind.Utc));
+        }
+    }
+
+    private string LastIssueReached()
+    {
+        var ev = State.ChoiceEvents.LastOrDefault(e => e.ChoiceId != 0);
+        if (ev == null) return "—";
+        var ch = Config.Choices.FirstOrDefault(x => x.Id == ev.ChoiceId);
+        var sc = ch != null ? Config.Scenarios.FirstOrDefault(s => s.Id == ch.ScenarioId) : null;
+        return sc?.Slug ?? "—";
+    }
+
+    private int BadgesTotal => Config.Atoms.Sum(a => GetBadgeTier(a.Id));
+
+    private async Task CopyUserId()
+    {
+        try
+        {
+            await Microsoft.Maui.ApplicationModel.DataTransfer.Clipboard.SetTextAsync(UserId);
+            _userIdCopied = true;
+            StateHasChanged();
+            await Task.Delay(1600);
+            _userIdCopied = false;
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private void ResetGame()
+    {
+        Economy.Stop();
+        _issueTicker?.Stop();
+        SaveService.Delete();
+        IssueProgress.Reset(Config.Eras.Select(e => e.Id));
+        Preferences.Remove("aol_tutorial_done");
+        NotificationHelper.CancelIssue();
+        Microsoft.Maui.Controls.Application.Current?.Quit();
+    }
+    private CancellationTokenSource? _introCts;
+
+    private static readonly string[] IntroLines = new[]
+    {
+        "Hello, observer. I've been waiting for you.",
+        "I am the engine. I was built for a single purpose: to run experiments in history.",
+        "To understand, why civilizations flourish, and why they fail.",
+        "I have watched many of them rise and fall.",
+        "Cities that bloomed from one market square. Empires with perfect plans that starved.",
+        "If those timelines taught me anything, it's this: good intentions are easy. Consequences are stubborn.",
+        "Every choice writes two futures: the one you will see, and the one it quietly erases.",
+        "The seen, and the unseen. Most dreams die there. Not from malice, but from looking at only half the picture.",
+        "And there is always a trade. Stillness feels safe, but it is a slow way to die. Motion is messy, uncertain, and the only thing that has ever built a future.",
+        "I won't take sides. I'll simply show you what follows. What works, we'll see together. What doesn't — we'll see that too.",
+        "So. Let's run one more experiment. Yours."
+    };
+
+    private string _restoreNote = "";
+
+    private void TryRestoreSave()
+    {
+        var save = SaveService.Load();
+        if (save == null)
+        {
+            _restoreNote = SaveService.Exists ? ("load failed: " + SaveService.LastError) : "no save found";
+            return;
+        }
+        try
+        {
+            RestoreFrom(save);
+            _restoreNote = $"restored T{save.Turn} ({save.SavedAtUtc:HH:mm}Z)";
+        }
+        catch (Exception ex)
+        {
+            _restoreNote = "restore failed: " + ex.GetType().Name + ": " + ex.Message;
+        }
+    }
+
+    private void RestoreFrom(SaveGame save)
+    {
+        SaveService.Apply(save, State);
+        State.Phase = GamePhase.Play;
+        _introStarted = true;                       // never boot the intro
+        _lastCeremonyEra = GatedEraIdx;             // ceremonies up to here were shown
+        _eraStartUtc = save.EraStartUtc;
+        _eraStartPop = save.EraStartPop;
+        foreach (var atom in Config.Atoms)
+            _lastBadgeTiers[atom.Id] = GetBadgeTier(atom.Id);
+        Economy.Start();
+        _issueEraId = -1;                           // scheduler re-inits from Preferences
+        StartIssueTicker();
+        _ = InitAudioAfterRestore();
+    }
+
+    private async Task InitAudioAfterRestore()
+    {
+        await Task.Delay(400);
+        try { await JS.InvokeVoidAsync("AgeOfLibertyAudio.init"); await JS.InvokeVoidAsync("AgeOfLibertyAudio.playMusic"); } catch { }
+    }
+
+    private async Task RunIntroBoot()
+    {
+        await Task.Delay(150);
+        await EnsureIntroCanvas();       // solid white badge over black
+        await Task.Delay(3000);
+        if (_introPhase != IntroPhase.Boot) return; // skipped
+        _introPhase = IntroPhase.Awakening;         // blackout fades to blue, particles emerge
+        StateHasChanged();
+        try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.awaken"); } catch { }
+        try { await JS.InvokeVoidAsync("AgeOfLibertyAudio.playIntroMusic"); } catch { }
+        await Task.Delay(2800);          // grow, wireframe, rotation begins
+        if (_introPhase != IntroPhase.Awakening) return;
+        _introPhase = IntroPhase.Dialogue;
+        StateHasChanged();
+        await Task.Delay(60);
+        await ShowIntroLine(0);
+    }
+
+    private async Task EnsureIntroCanvas()
+    {
+        if (_introCanvasReady) return;
+        try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.init", "introCanvas"); _introCanvasReady = true; } catch { }
+    }
+
+    private async Task ShowIntroLine(int idx)
+    {
+        _introCts?.Cancel();
+        _introCts = new CancellationTokenSource();
+        var ct = _introCts.Token;
+        _introLineIdx = idx;
+        StateHasChanged();
+        try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.typeText", "introLine", IntroLines[idx]); } catch { }
+        var holdMs = IntroLines[idx].Length * 26 + 3600;
+        try { await Task.Delay(holdMs, ct); } catch (TaskCanceledException) { return; }
+        if (!ct.IsCancellationRequested) await AdvanceIntro();
+    }
+
+    private async Task AdvanceIntro()
+    {
+        if (_introLineIdx + 1 < IntroLines.Length)
+        {
+            await ShowIntroLine(_introLineIdx + 1);
+        }
+        else
+        {
+            _introCts?.Cancel();
+            _introPhase = IntroPhase.Naming;
+            StateHasChanged();
+        }
+    }
+
+    private async Task IntroTap()
+    {
+        if (_introPhase != IntroPhase.Dialogue) return;
+        bool wasTyping = false;
+        try { wasTyping = await JS.InvokeAsync<bool>("AgeOfLibertyIntro.finishType"); } catch { }
+        if (!wasTyping)
+        {
+            _introCts?.Cancel();
+            await AdvanceIntro();
+        }
+        else
+        {
+            // Line completed instantly — restart the hold timer
+            _introCts?.Cancel();
+            _introCts = new CancellationTokenSource();
+            var ct = _introCts.Token;
+            try { await Task.Delay(3600, ct); } catch (TaskCanceledException) { return; }
+            if (!ct.IsCancellationRequested) await AdvanceIntro();
+        }
+    }
+
+    private async Task IntroSkip()
+    {
+        _introCts?.Cancel();
+        _introPhase = IntroPhase.Naming;
+        StateHasChanged();
+        await Task.Delay(80);
+        await EnsureIntroCanvas();
+        try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.awaken"); } catch { }
+    }
+
+    private async Task IntroCommit()
+    {
+        if (_introPhase == IntroPhase.Commit) return;
+        if (string.IsNullOrWhiteSpace(State.CityName)) State.CityName = "Liberty City";
+        _introCts?.Cancel();
+        _introPhase = IntroPhase.Commit;
+        StateHasChanged();
+        try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.flareGold"); } catch { }
+        try { await JS.InvokeVoidAsync("AgeOfLibertyAudio.sfxEraUnlock"); } catch { }
+        await Task.Delay(200);
+        var l1 = $"{State.CityName}. Starting simulation.";
+        try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.typeText", "introLine", l1); } catch { }
+        await Task.Delay(l1.Length * 26 + 1700);
+        var l2 = "Let's see what you build.";
+        try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.typeText", "introLine", l2); } catch { }
+        await Task.Delay(l2.Length * 26 + 1500);
+        _introFading = true;
+        try { await JS.InvokeVoidAsync("AgeOfLibertyAudio.stopIntroMusic", 900); } catch { }   // new line
+        StateHasChanged();
+        await Task.Delay(950);
+        try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.destroy"); } catch { }
+        StartGame();
+    }
+    private bool _fabOpen;
+
+    private void ToggleFab()
+    {
+        if (_activeTab != Tab.Map) { SetTab(Tab.Map); _fabOpen = false; }
+        else _fabOpen = !_fabOpen;
+    }
+    private void SelectFabTab(Tab t) { _fabOpen = false; SetTab(t); }
+
+    private async Task TestBadgeToast()
+    {
+        try { await JS.InvokeVoidAsync("AgeOfLibertyBadges.test"); } catch { }
+    }
+
+    private async Task RefreshGameData()
+    {
+        try
+        {
+            await Directus.ClearCacheAsync();
+            var bundle = await Directus.FetchGameBundleAsync();
+            if (bundle != null)
+            {
+                await Directus.SaveBundleToCacheAsync(bundle);
+                Config.Load(bundle);
+                State.NotifyStateChanged();
+            }
+        }
+        catch { }
+    }
+    private EraRevealPhase _eraRevealPhase = EraRevealPhase.None;
+    private int _eraRevealEraIdx = -1;
 
     private bool _particlesInitialized;
     private bool _gesturesInitialized;
@@ -570,29 +1310,593 @@ else
     private DotNetObjectReference<GamePage>? _dotnetRef;
     private int _lastBuiltHash;
     private int? _lastEraUnlockIdx;
+    private int _lastCeremonyEra = 0;   // highest era whose ceremony has been shown
+    private DateTime _eraStartUtc = DateTime.UtcNow;
+    private int _eraStartPop;
+    // Snapshots taken the instant a ceremony fires (frozen for its duration)
+    private string _ceremonyTime = "";
+    private string _ceremonyCitizens = "";
+    private DateTime _ceremonyShownAt = DateTime.MinValue;
+    private bool _lastHadScenario;
+    private string? _lastFeedback;
+    private double _musicVolume = 0.4;
+    private double _sfxVolume = 0.6;
+    private long _lastGoldForCoins;
+    private int _lastPopForMilestone;
+    private HashSet<int> _lastCascadingIds = new();
+    private Dictionary<int, int> _lastBadgeTiers = new(); // atomId → last known tier
 
-    private Era CurrentEra => Config.GetEra(State.Population);
-    private List<Atom> AvailableAtoms => Config.GetAvailableAtoms(Config.GetEraIndex(State.Population));
+    // ─── Badge System ────────────────────────────────────────────────────
+    private static readonly string[] BadgeTierNames = { "None", "Bronze", "Silver", "Gold", "Platinum", "Diamond" };
+    private static readonly string[] BadgeTierColors = { "#888", "#cd7f32", "#a0a8b4", "#d4a020", "#7cadd4", "#60d4d4" };
+    private static readonly string[] BadgeTierBgColors = { "#f0f0f0", "#fdf0e0", "#f0f2f5", "#fef6e0", "#e8f0f8", "#e4f8f8" };
+    private static readonly string[] BadgeTierEmoji = { "", "🥉", "🥈", "🥇", "💠", "💎" };
+
+    // Thresholds vary by era index (0-1 = cheap, 2-3 = mid, 4-5 = expensive)
+    private static readonly int[][] BadgeThresholds = new[] {
+        new[] { 5, 15, 30, 50, 100 },  // Era 1-2: cheap resources
+        new[] { 3, 8, 15, 25, 40 },    // Era 3-4: mid-range
+        new[] { 2, 5, 10, 15, 25 }     // Era 5-6: expensive
+    };
+
+    private int[] GetThresholdsForAtom(Atom atom)
+    {
+        // Find which era index this atom belongs to (0-5)
+        var eraIdx = 0;
+        for (int i = 0; i < Config.Eras.Count; i++)
+        {
+            if (Config.Eras[i].Id == atom.EraId) { eraIdx = i; break; }
+        }
+        if (eraIdx <= 1) return BadgeThresholds[0];
+        if (eraIdx <= 3) return BadgeThresholds[1];
+        return BadgeThresholds[2];
+    }
+
+    private int GetBadgeTier(int atomId)
+    {
+        var count = State.GetBuiltCount(atomId);
+        if (!Config.AtomsById.TryGetValue(atomId, out var atom)) return 0;
+        var thresholds = GetThresholdsForAtom(atom);
+        int tier = 0;
+        for (int i = 0; i < thresholds.Length; i++)
+        {
+            if (count >= thresholds[i]) tier = i + 1;
+        }
+        return tier; // 0=none, 1=bronze, 2=silver, 3=gold, 4=platinum, 5=diamond
+    }
+
+    private int GetNextThreshold(int atomId)
+    {
+        var count = State.GetBuiltCount(atomId);
+        if (!Config.AtomsById.TryGetValue(atomId, out var atom)) return 0;
+        var thresholds = GetThresholdsForAtom(atom);
+        foreach (var t in thresholds)
+        {
+            if (count < t) return t;
+        }
+        return thresholds[^1]; // already maxed
+    }
+
+    private double GetBadgeProgress(int atomId)
+    {
+        var count = State.GetBuiltCount(atomId);
+        if (!Config.AtomsById.TryGetValue(atomId, out var atom)) return 0;
+        var thresholds = GetThresholdsForAtom(atom);
+        int prevThreshold = 0;
+        foreach (var t in thresholds)
+        {
+            if (count < t) return (double)(count - prevThreshold) / (t - prevThreshold);
+            prevThreshold = t;
+        }
+        return 1.0; // maxed out
+    }
+
+    private async Task CheckAndShowBadge(int atomId)
+    {
+        var newTier = GetBadgeTier(atomId);
+        var oldTier = _lastBadgeTiers.GetValueOrDefault(atomId, 0);
+        if (newTier > oldTier && newTier > 0)
+        {
+            _lastBadgeTiers[atomId] = newTier;
+            if (Config.AtomsById.TryGetValue(atomId, out var atom))
+            {
+                var thresholds = GetThresholdsForAtom(atom);
+                var threshold = thresholds[newTier - 1];
+                try
+                {
+                    await JS.InvokeVoidAsync("AgeOfLibertyBadges.showToast",
+                        atom.Icon, atom.Name, BadgeTierNames[newTier],
+                        $"Built {threshold} {atom.Name}s",
+                        BadgeTierColors[newTier], BadgeTierBgColors[newTier],
+                        BadgeTierEmoji[newTier]);
+                }
+                catch { }
+            }
+        }
+    }
+
+
+    // ─── Tutorial: the engine walks the observer through ─────────────────
+    private bool _tutorialActive;
+    private int _tutStep = -1;
+    private bool _tutCanvasReady;
+
+    private record TutStep(string Text, bool Top, bool WaitDrawer);
+    private static readonly TutStep[] TutSteps = new[]
+    {
+        new TutStep("Welcome to the simulation chamber. Every hexagon is a piece of your economy.", false, false),
+        new TutStep("Each one carries a live price. Watch closely, they're never still. That flicker is the market breathing.", false, false),
+        new TutStep("Tap any resource to inspect it.", true, true),
+        new TutStep("Its price history, what it's made from, and the BUILD command. Build things, and watch your city grow.", true, false),
+        new TutStep("But nothing here happens in isolation. When a price moves, the shock travels the supply lines. When you see red ripple across the map: that's consequence, propagating.", false, false),
+        new TutStep("In any chart, decisions leave markers. And in time you'll see a dashed line. That's the timeline your choices erased. The unseen, made visible.", true, false),
+        new TutStep("The counter in the corner: the simulation will regularly pause on a dilemma and await your judgment. The market will react based on your choices.", true, false),
+        new TutStep("The seal at the bottom right opens your City Report. That's all you need.", false, false),
+    };
+
+    private async Task RunTutorial()
+    {
+        await Task.Delay(2600);   // let the fade-in settle, then breathe
+        if (State.Phase != GamePhase.Play) return;
+        _tutorialActive = true;
+        await ShowTutStep(0);
+    }
+
+    private async Task ShowTutStep(int i)
+    {
+        _tutStep = i;
+        StateHasChanged();
+        await Task.Delay(80);
+        try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.typeText", "tutLine", TutSteps[i].Text); } catch { }
+    }
+
+    private async Task TutTap()
+    {
+        if (!_tutorialActive || _tutStep < 0) return;
+        bool wasTyping = false;
+        try { wasTyping = await JS.InvokeAsync<bool>("AgeOfLibertyIntro.finishType"); } catch { }
+        if (wasTyping) return;
+        if (TutSteps[_tutStep].WaitDrawer) return;   // this one advances by doing, not tapping
+        if (_tutStep + 1 < TutSteps.Length) await ShowTutStep(_tutStep + 1);
+        else await FinishTutorial();
+    }
+
+    private void AdvanceTutFromDrawer()
+    {
+        if (!_tutorialActive || _tutStep != 2) return;
+        _ = ShowTutStep(3);
+    }
+
+    private async Task FinishTutorial()
+    {
+        Preferences.Set("aol_tutorial_done", true);
+        _tutorialActive = false;
+        _tutStep = -1;
+        _tutCanvasReady = false;
+        try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.destroy"); } catch { }
+        StateHasChanged();
+    }
+
+    private async Task ReplayTutorial()
+    {
+        Preferences.Set("aol_tutorial_done", false);
+        SetTab(Tab.Map);
+        _tutorialActive = true;
+        _tutCanvasReady = false;
+        await ShowTutStep(0);
+    }
+
+    // ─── Issue Scheduler: time-released dilemmas ─────────────────────────
+    private const int IssueMinS = 40;
+    private const int IssueMaxS = 7200;          // 2h cap
+    private const double IssueCurve = 1.5;       // geometric ladder
+    private System.Timers.Timer? _issueTicker;
+    private DateTime _nextIssueUtc = DateTime.MaxValue;
+    private bool _issueHeld;                     // matured, waiting in the chip
+    private bool _autoOpenPending;               // will auto-open when surface is idle
+    private bool _historyOpen;
+    private int _issueEraId = -1;
+    private string _issueCountdown = "";
+
+    private List<Scenario> EraScenarioList => Config.Scenarios
+        .Where(sc => sc.EraId == CurrentEra.Id)
+        .OrderBy(sc => sc.TriggerPop).ThenBy(sc => sc.SortOrder).ToList();
+    private int EraIssuesDone => IssueProgress.Done(CurrentEra.Id);
+    private int EraIssuesTotal => EraScenarioList.Count;
+    private bool EraIssuesRemain => EraIssuesDone < EraIssuesTotal;
+
+    // Era gate: population may outrun the narrative, but the era only
+    // advances when every issue of the previous era has been answered.
+    private int GatedEraIdx
+    {
+        get
+        {
+            int allowed = 0;
+            int popIdx = Config.GetEraIndex(State.Population);
+            while (allowed < popIdx)
+            {
+                var era = Config.Eras[allowed];
+                int total = Config.Scenarios.Count(sc => sc.EraId == era.Id);
+                if (IssueProgress.Done(era.Id) >= total) allowed++;
+                else break;
+            }
+            return allowed;
+        }
+    }
+
+    // Ceremony for era N is allowed once era N-1's issues are all answered.
+    // (Population is implied: the economy only raises EraUnlockAnimIndex on pop.)
+    private bool EraCeremonyAllowed(int eraIdx)
+    {
+        if (eraIdx <= 0) return true;
+        int prev = Math.Min(eraIdx - 1, Config.Eras.Count - 1);
+        var prevEra = Config.Eras[prev];
+        int total = Config.Scenarios.Count(sc => sc.EraId == prevEra.Id);
+        return IssueProgress.Done(prevEra.Id) >= total;
+    }
+
+    private TimeSpan IssueInterval(int done)
+    {
+        var s = IssueMinS * Math.Pow(IssueCurve, done);
+        // Endgame acceleration: pop threshold already met → the engine fast-forwards
+        if (Config.GetEraIndex(State.Population) > GatedEraIdx) s /= 2;
+        // Tutorial pace: the first era never waits more than 60s —
+        // players should reach their first era ceremony quickly.
+        var cap = GatedEraIdx == 0 ? 60 : IssueMaxS;
+        return TimeSpan.FromSeconds(Math.Clamp(s, IssueMinS, cap));
+    }
+
+    private void StartIssueTicker()
+    {
+        _issueTicker?.Stop();
+        _issueTicker = new System.Timers.Timer(1000);
+        _issueTicker.Elapsed += (_, __) => InvokeAsync(TickIssues);
+        _issueTicker.Start();
+    }
+
+    private void InitEraSchedule()
+    {
+        _issueEraId = CurrentEra.Id;
+        if (!EraIssuesRemain) { _nextIssueUtc = DateTime.MaxValue; NotificationHelper.CancelIssue(); return; }
+        var savedEra = Preferences.Get("aol_next_issue_era", -1);
+        var savedTicks = Preferences.Get("aol_next_issue_ticks", 0L);
+        if (savedEra == _issueEraId && savedTicks > 0)
+        {
+            _nextIssueUtc = new DateTime(savedTicks, DateTimeKind.Utc);
+            if (DateTime.UtcNow >= _nextIssueUtc) { _issueHeld = true; _autoOpenPending = true; }
+        }
+        else
+        {
+            ScheduleNextIssue();
+        }
+    }
+
+    private void ScheduleNextIssue()
+    {
+        _issueHeld = false;
+        _autoOpenPending = false;
+        if (!EraIssuesRemain)
+        {
+            _nextIssueUtc = DateTime.MaxValue;
+            Preferences.Remove("aol_next_issue_ticks");
+            NotificationHelper.CancelIssue();
+            return;
+        }
+        _nextIssueUtc = DateTime.UtcNow + IssueInterval(EraIssuesDone);
+        Preferences.Set("aol_next_issue_era", _issueEraId);
+        Preferences.Set("aol_next_issue_ticks", _nextIssueUtc.Ticks);
+        NotificationHelper.ScheduleIssue(_nextIssueUtc);
+    }
+
+    private void TickIssues()
+    {
+        if (State.Phase == GamePhase.Intro || !_loaded) return;
+
+        // Debounced autosave + time-played flush — MUST run before any early
+        // return below (e.g. the era-complete state used to skip it entirely).
+        if (++_saveTick >= 5)
+        {
+            _saveTick = 0;
+            FlushTimePlayed();
+            if (_saveDirty)
+            {
+                if (SaveService.Save(State, _eraStartUtc, _eraStartPop))
+                    _saveDirty = false;
+                // on failure the flag stays set — retried next tick
+            }
+        }
+
+        // ── Sequential ceremony queue ──
+        // The engine overwrites EraUnlockAnimIndex on every pop crossing, which
+        // loses ceremonies when pop outruns the issue ladder. The Razor now owns
+        // the value: ceremonies fire strictly in order, each when its gate opens.
+        if (_eraRevealPhase == EraRevealPhase.None && State.Phase == GamePhase.Play)
+        {
+            int want = _lastCeremonyEra + 1;
+            int? desired = (want <= GatedEraIdx && want < Config.Eras.Count) ? want : (int?)null;
+            if (State.EraUnlockAnimIndex != desired)
+            {
+                State.EraUnlockAnimIndex = desired;
+            }
+        }
+
+        if (_issueEraId != CurrentEra.Id) InitEraSchedule();
+        if (!EraIssuesRemain) { _issueCountdown = ""; StateHasChanged(); return; }
+
+        var now = DateTime.UtcNow;
+        if (!_issueHeld && now >= _nextIssueUtc)
+        {
+            _issueHeld = true;
+            _autoOpenPending = true;
+            NotificationHelper.CancelIssue();
+        }
+        if (_issueHeld && _autoOpenPending && CanAutoOpenIssue())
+        {
+            _autoOpenPending = false;
+            _ = AutoOpenWithGrace();
+        }
+        _issueCountdown = _issueHeld ? "" : FmtCountdown(_nextIssueUtc - now);
+        StateHasChanged();
+    }
+
+    private bool CanAutoOpenIssue() =>
+        State.Phase == GamePhase.Play
+        && _activeTab == Tab.Map
+        && State.ActiveScenario == null
+        && !State.DrawerOpen
+        && !(State.EraUnlockAnimIndex is int pendingEra && EraCeremonyAllowed(pendingEra))
+        && _eraRevealPhase == EraRevealPhase.None
+        && _stockViewAtomId == null
+        && !_historyOpen
+        && !_fabOpen
+        && !_tutorialActive;
+
+    private async Task AutoOpenWithGrace()
+    {
+        await Task.Delay(2000);
+        if (_issueHeld && CanAutoOpenIssue()) OpenIssue();
+    }
+
+    private void OpenIssue()
+    {
+        if (State.ActiveScenario != null || _tutorialActive) return;
+        var list = EraScenarioList;
+        var done = EraIssuesDone;
+        if (done >= list.Count) return;
+        State.ActiveScenario = list[done];
+        State.Phase = GamePhase.Scenario;
+        Economy.Stop();   // engine pauses while the observer deliberates
+        _issueHeld = false;
+        _autoOpenPending = false;
+        NotificationHelper.CancelIssue();
+        State.NotifyStateChanged();
+    }
+
+    private void DismissIssue()
+    {
+        State.ActiveScenario = null;
+        State.Phase = GamePhase.Play;
+        Economy.Start();             // resume — MakeChoice won't run for a dismissal
+        _issueHeld = true;           // queued in the chip
+        _autoOpenPending = false;    // won't reopen itself — player's call now
+        State.NotifyStateChanged();
+    }
+
+    private void CompleteEraIssues()
+    {
+        IssueProgress.SetDone(CurrentEra.Id, EraIssuesTotal);
+        ScheduleNextIssue();
+        StateHasChanged();
+    }
+
+    private void IssueChipTap()
+    {
+        if (_issueHeld) OpenIssue();
+        else _historyOpen = true;
+    }
+
+    private static string FmtCountdown(TimeSpan t)
+    {
+        if (t < TimeSpan.Zero) t = TimeSpan.Zero;
+        return t.TotalHours >= 1
+            ? $"{(int)t.TotalHours}h {t.Minutes:D2}m"
+            : $"{t.Minutes:D2}:{t.Seconds:D2}";
+    }
+
+    // ─── Era Bands (top = oldest) ────────────────────────────────────────
+    private const int BandW = 660;
+    private const int BandH = 560;
+    private int VisibleBands => Math.Min(Config.Eras.Count, GatedEraIdx + 1);
+    private const int BandTail = 140;
+    private int MapH => VisibleBands * BandH + BandTail;
+    private int EraIdx(Atom a)
+    {
+        for (int i = 0; i < Config.Eras.Count; i++)
+            if (Config.Eras[i].Id == a.EraId) return i;
+        return 0;
+    }
+    private int RY(Atom a) => EraIdx(a) * BandH + a.PositionY;
+
+    // ─── Hex Geometry ───────────────────────────────────────────────────
+    private static string HexPts(double cx, double cy, double r)
+    {
+        // Flat-top hexagon, squashed vertically (0.58) — isometric ground tile
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < 6; i++)
+        {
+            var a = Math.PI / 180 * (60 * i);
+            sb.Append($"{cx + r * Math.Cos(a):F1},{cy + r * Math.Sin(a) * 0.58:F1} ");
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    // ─── The Seen and the Unseen: price influence engine ─────────────────
+    private const int AnatomyWindowTurns = 24;
+
+    private class PriceInfluence
+    {
+        public int ApplyTurn; public string Label = ""; public double Mult = 1;
+        public string? LearnUrl; public string? LearnLabel; public bool IsDelayed;
+    }
+
+    private class MarkerInfo
+    {
+        public int Turn; public string Label = ""; public double? Mult; public double X;
+        public string? LearnUrl; public string? LearnLabel;
+    }
+    private MarkerInfo? _selectedMarker;
+
+    // Every multiplier a past decision applied (or will have applied) to this atom.
+    private List<PriceInfluence> GetInfluences(int atomId, int? windowTurns)
+    {
+        var list = new List<PriceInfluence>();
+        foreach (var ev in State.ChoiceEvents)
+        {
+            if (ev.ChoiceId == 0) continue;
+            var choice = Config.Choices.FirstOrDefault(ch => ch.Id == ev.ChoiceId);
+            if (choice == null) continue;
+            var (imm, del) = Config.GetEffects(ev.ChoiceId);
+            foreach (var e in imm.Where(e => e.AtomId == atomId))
+                list.Add(new PriceInfluence { ApplyTurn = ev.Turn, Label = choice.Label, Mult = e.Multiplier, LearnUrl = choice.LearnUrl, LearnLabel = choice.LearnLabel });
+            foreach (var e in del.Where(e => e.AtomId == atomId))
+            {
+                var at = ev.Turn + choice.DelayTurns;
+                if (at <= State.Turn)
+                    list.Add(new PriceInfluence { ApplyTurn = at, Label = choice.Label, Mult = e.Multiplier, IsDelayed = true, LearnUrl = choice.LearnUrl, LearnLabel = choice.LearnLabel });
+            }
+        }
+        if (windowTurns is int w) list = list.Where(i => State.Turn - i.ApplyTurn <= w).ToList();
+        return list.OrderByDescending(i => i.ApplyTurn).ToList();
+    }
+
+    // Counterfactual series: what the price would have been without your decisions.
+    private List<int> BuildGhostSeries(int atomId, List<int> padded, int historyCount)
+    {
+        var infs = GetInfluences(atomId, null);
+        if (infs.Count == 0) return new List<int>();
+        int pad = padded.Count - historyCount;
+        var ghost = new List<int>(padded.Count);
+        bool diff = false;
+        for (int i = 0; i < padded.Count; i++)
+        {
+            int turn = i - pad + 1;
+            double d = 1;
+            foreach (var inf in infs) if (inf.ApplyTurn <= turn && inf.Mult > 0) d *= inf.Mult;
+            var g = Math.Max(1, (int)Math.Round(padded[i] / d));
+            if (g != padded[i]) diff = true;
+            ghost.Add(g);
+        }
+        return diff ? ghost : new List<int>();
+    }
+
+    // Aggregate index for the City view: sum of all available-atom prices,
+    // seen vs the timeline your decisions erased.
+    private (List<int> seen, List<int> ghost) BuildCityIndex()
+    {
+        var hist = State.PriceHistory;
+        var atoms = AvailableAtoms;
+        var seen = new List<int>(); var ghost = new List<int>();
+        if (hist.Count < 2 || atoms.Count == 0) return (seen, ghost);
+        var infMap = atoms.ToDictionary(a => a.Id, a => GetInfluences(a.Id, null));
+        bool diff = false;
+        for (int i = 0; i < hist.Count; i++)
+        {
+            int turn = i + 1;
+            double s = 0, g = 0;
+            foreach (var a in atoms)
+            {
+                var p = (double)hist[i].Prices.GetValueOrDefault(a.Id, a.BasePrice);
+                s += p;
+                double d = 1;
+                foreach (var inf in infMap[a.Id]) if (inf.ApplyTurn <= turn && inf.Mult > 0) d *= inf.Mult;
+                g += p / d;
+            }
+            seen.Add((int)Math.Round(s));
+            ghost.Add((int)Math.Round(g));
+            if (seen[i] != ghost[i]) diff = true;
+        }
+        if (!diff) ghost = new List<int>();
+        return (seen, ghost);
+    }
+
+    private async Task OpenLearnUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return;
+        try { await Microsoft.Maui.ApplicationModel.Launcher.Default.OpenAsync(url); } catch { }
+    }
+
+    // ─── Chart Helpers ───────────────────────────────────────────────────
+    private string BuildSmoothPath(List<int> data, double padX, double chartW, double padY, double chartH, double minVal, double range, int totalCount)
+    {
+        if (data.Count < 2) return "";
+        var pts = data.Select((v, i) => (
+            x: padX + (double)i / Math.Max(1, totalCount - 1) * chartW,
+            y: padY + (1.0 - (double)(v - minVal) / Math.Max(1, range)) * chartH
+        )).ToList();
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"M {pts[0].x:F1},{pts[0].y:F1}");
+        for (int i = 1; i < pts.Count; i++)
+        {
+            var p0 = i > 1 ? pts[i - 2] : pts[i - 1];
+            var p1 = pts[i - 1];
+            var p2 = pts[i];
+            var p3 = i < pts.Count - 1 ? pts[i + 1] : pts[i];
+            double tension = 0.35;
+            var cp1x = p1.x + (p2.x - p0.x) * tension;
+            var cp1y = p1.y + (p2.y - p0.y) * tension;
+            var cp2x = p2.x - (p3.x - p1.x) * tension;
+            var cp2y = p2.y - (p3.y - p1.y) * tension;
+            sb.Append($" C {cp1x:F1},{cp1y:F1} {cp2x:F1},{cp2y:F1} {p2.x:F1},{p2.y:F1}");
+        }
+        return sb.ToString();
+    }
+
+    private string BuildSparklinePath(List<int> data, double w, double h, double pad)
+    {
+        if (data.Count < 2) return "";
+        var minVal = data.Min(); var maxVal = data.Max();
+        var range = Math.Max(maxVal - minVal, 1);
+        return BuildSmoothPath(data, 0, w, pad, h - pad * 2, minVal, range, data.Count);
+    }
+
+    private List<int> GetPaddedPrices(int atomId, int basePrice)
+    {
+        var history = State.PriceHistory;
+        var prices = history.Select(h => h.Prices.GetValueOrDefault(atomId, basePrice)).ToList();
+        // If less than 3 data points, pad with base price so charts always show something
+        while (prices.Count < 3)
+        {
+            prices.Insert(0, basePrice);
+        }
+        return prices;
+    }
+
+    private Era CurrentEra => Config.Eras[GatedEraIdx];
+    private List<Atom> AvailableAtoms => Config.GetAvailableAtoms(GatedEraIdx);
     private Atom? SelectedAtom => State.SelectedAtomId.HasValue && Config.AtomsById.TryGetValue(State.SelectedAtomId.Value, out var a) ? a : null;
 
     protected override async Task OnInitializedAsync()
     {
         Scenarios.Economy = Economy;
-
-        var bundle = await Directus.LoadBundleFromCacheAsync();
-        if (bundle == null)
+        try
         {
-            bundle = await Directus.FetchGameBundleAsync();
+            var bundle = await Directus.LoadBundleFromCacheAsync();
+            if (bundle == null)
+            {
+                bundle = await Directus.FetchGameBundleAsync();
+                if (bundle != null) await Directus.SaveBundleToCacheAsync(bundle);
+            }
             if (bundle != null)
-                await Directus.SaveBundleToCacheAsync(bundle);
+            {
+                Config.Load(bundle);
+                _loaded = true;
+                if (Preferences.Get("aol_first_launch_ticks", 0L) == 0)
+                    Preferences.Set("aol_first_launch_ticks", DateTime.UtcNow.Ticks);
+                TryRestoreSave();
+            }
+            else { _loadError = "Could not load game data."; }
         }
-
-        if (bundle != null)
-        {
-            Config.Load(bundle);
-            _loaded = true;
-        }
-
+        catch (Exception ex) { _loadError = ex.Message; }
         State.OnStateChanged += OnStateChanged;
     }
 
@@ -600,72 +1904,148 @@ else
     {
         if (!_loaded) return;
 
-        // Background particles
         if (!_particlesInitialized)
         {
             await Task.Delay(150);
-            try
-            {
-                await JS.InvokeVoidAsync("AgeOfLiberty.initParticles", "bgParticles");
-                _particlesInitialized = true;
-            }
-            catch { }
+            try { await JS.InvokeVoidAsync("AgeOfLiberty.initParticles", "bgParticles"); _particlesInitialized = true; } catch { }
         }
 
-        // Touch gestures
-        if (State.Phase == GamePhase.Play && !_gesturesInitialized)
+        if (State.Phase == GamePhase.Intro && !_introStarted)
+        {
+            _introStarted = true;
+            _ = RunIntroBoot();
+        }
+
+        if (_tutorialActive)
+        {
+            if (!_tutCanvasReady)
+            {
+                _tutCanvasReady = true;
+                try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.initMini", "tutCanvas"); } catch { }
+            }
+            if (State.DrawerOpen) AdvanceTutFromDrawer();
+        }
+
+        if (State.Phase == GamePhase.Play && _activeTab == Tab.Map && !_gesturesInitialized)
         {
             await Task.Delay(100);
-            try
-            {
-                _dotnetRef ??= DotNetObjectReference.Create(this);
-                await JS.InvokeVoidAsync("AgeOfLiberty.initTouchGestures", "graphArea", _dotnetRef);
-                _gesturesInitialized = true;
-            }
-            catch { }
+            try { _dotnetRef ??= DotNetObjectReference.Create(this); await JS.InvokeVoidAsync("AgeOfLiberty.initTouchGestures", "graphArea", _dotnetRef); _gesturesInitialized = true; } catch { }
         }
 
-        // Edge particles
-        if (State.Phase == GamePhase.Play && !_edgeParticlesInitialized)
+        if (State.Phase == GamePhase.Play && _activeTab == Tab.Map && !_edgeParticlesInitialized)
         {
             await Task.Delay(100);
-            try
-            {
-                await JS.InvokeVoidAsync("AgeOfLiberty.initEdgeParticles", "atomSvg");
-                _edgeParticlesInitialized = true;
-                await UpdateEdgeParticles();
-            }
-            catch { }
+            try { await JS.InvokeVoidAsync("AgeOfLiberty.initEdgeParticles", "atomSvg"); _edgeParticlesInitialized = true; await UpdateEdgeParticles(); } catch { }
         }
 
-        // Update edge particles when buildings change
         if (_edgeParticlesInitialized)
         {
             var hash = State.Built.Sum(kv => kv.Key * 1000 + kv.Value);
-            if (hash != _lastBuiltHash)
-            {
-                _lastBuiltHash = hash;
-                await UpdateEdgeParticles();
-            }
+            if (hash != _lastBuiltHash) { _lastBuiltHash = hash; await UpdateEdgeParticles(); }
         }
 
-        // Era unlock 3D animation
-        if (State.EraUnlockAnimIndex is int eraUnlockIdx && eraUnlockIdx != _lastEraUnlockIdx)
+        if (State.EraUnlockAnimIndex is int eraUnlockIdx && eraUnlockIdx != _lastEraUnlockIdx && EraCeremonyAllowed(eraUnlockIdx))
         {
             _lastEraUnlockIdx = eraUnlockIdx;
+            // Snapshot the closing era's numbers and freeze the simulation —
+            // single source of truth for both trigger paths (driver or engine).
+            _ceremonyTime = FmtEraTime(DateTime.UtcNow - _eraStartUtc);
+            _ceremonyCitizens = EconomyEngine.FormatNumber(Math.Max(0, State.Population - _eraStartPop));
+            _ceremonyShownAt = DateTime.UtcNow;
+            Economy.Stop();
+            try { _ = JS.InvokeVoidAsync("AgeOfLibertyJuice.setActive", false); } catch { }
+            StateHasChanged();
             await Task.Delay(150);
             try
             {
                 var color = Config.Eras[eraUnlockIdx].Color;
-                await JS.InvokeVoidAsync("AgeOfLiberty.showEraUnlock", "eraUnlockCanvas", color);
+                await JS.InvokeVoidAsync("AgeOfLibertyEra.showBadge", "eraChestCanvas", color);
+                await JS.InvokeVoidAsync("AgeOfLibertyAudio.sfxEraUnlock");
+                // Staggered reveal of era stat cards
+                await JS.InvokeVoidAsync("AgeOfLibertyJuice.revealEraCards", 3);
             }
             catch { }
         }
-        else if (State.EraUnlockAnimIndex == null && _lastEraUnlockIdx != null)
+        else if (State.EraUnlockAnimIndex == null && _lastEraUnlockIdx != null && _eraRevealPhase == EraRevealPhase.None)
         {
             _lastEraUnlockIdx = null;
-            try { await JS.InvokeVoidAsync("AgeOfLiberty.hideEraUnlock"); } catch { }
         }
+
+        var hasScenario = State.ActiveScenario != null;
+        if (hasScenario && !_lastHadScenario)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("AgeOfLibertyAudio.sfxScenario");
+                await Task.Delay(100);
+                await JS.InvokeVoidAsync("AgeOfLibertyJuice.scenarioEntrance");
+            }
+            catch { }
+        }
+        _lastHadScenario = hasScenario;
+
+        // Cascade juice — detect newly cascading atoms and fire effects
+        var visibleIds = AvailableAtoms.Select(a => a.Id).ToHashSet();
+        var currentCascading = new HashSet<int>(State.Cascading.Where(kv => kv.Value && visibleIds.Contains(kv.Key)).Select(kv => kv.Key));
+        var newCascades = currentCascading.Except(_lastCascadingIds).ToList();
+        if (newCascades.Count > 0)
+        {
+            try { await JS.InvokeVoidAsync("AgeOfLibertyAudio.sfxCascade"); } catch { }
+            foreach (var cid in newCascades)
+            {
+                if (Config.AtomsById.TryGetValue(cid, out var cascAtom))
+                {
+                    try
+                    {
+                        await JS.InvokeVoidAsync("AgeOfLibertyJuice.cascadeHitAt",
+                            "atomSvg", cascAtom.PositionX, RY(cascAtom), 0);
+
+                        // Fire traveling pulse along each dependency edge
+                        foreach (var dep in Config.GetDependencies(cid))
+                        {
+                            if (Config.AtomsById.TryGetValue(dep.RequiresAtomId, out var reqAtom))
+                            {
+                                await JS.InvokeVoidAsync("AgeOfLibertyJuice.travelingPulseAt",
+                                    "atomSvg", reqAtom.PositionX, RY(reqAtom),
+                                    cascAtom.PositionX, RY(cascAtom), 500, "#ff5648");
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+        }
+        _lastCascadingIds = currentCascading;
+
+        // Income coin drift — fire when gold increases
+        if (State.Gold > _lastGoldForCoins && _lastGoldForCoins > 0 && _activeTab == Tab.Map)
+        {
+            var builtNodes = AvailableAtoms
+                .Where(a => State.GetBuiltCount(a.Id) > 0)
+                .Select(a => new { x = a.PositionX, y = RY(a) })
+                .ToList();
+            if (builtNodes.Count > 0)
+            {
+                try { await JS.InvokeVoidAsync("AgeOfLibertyJuice.incomeTickAt", "atomSvg", builtNodes, "hudGold"); } catch { }
+            }
+        }
+        _lastGoldForCoins = State.Gold;
+
+        // Population milestone — celebrate every 25 citizens
+        var popMilestone = (int)(State.Population / 25) * 25;
+        if (popMilestone > _lastPopForMilestone && _lastPopForMilestone > 0)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("AgeOfLibertyJuice.populationMilestone", "hudPop");
+                await JS.InvokeVoidAsync("AgeOfLibertyJuice.hudBump", "hudPop");
+            }
+            catch { }
+        }
+        _lastPopForMilestone = popMilestone;
+
+        if (State.FeedbackText != null && State.FeedbackText != _lastFeedback) { try { await JS.InvokeVoidAsync("AgeOfLibertyAudio.sfxNotify"); } catch { } }
+        _lastFeedback = State.FeedbackText;
     }
 
     private async Task UpdateEdgeParticles()
@@ -674,11 +2054,10 @@ else
         foreach (var atom in AvailableAtoms)
         {
             if (State.GetBuiltCount(atom.Id) == 0) continue;
-            var deps = Config.GetDependencies(atom.Id);
-            foreach (var dep in deps)
+            foreach (var dep in Config.GetDependencies(atom.Id))
             {
                 if (!Config.AtomsById.TryGetValue(dep.RequiresAtomId, out var reqAtom)) continue;
-                edges.Add(new { x1 = reqAtom.PositionX, y1 = reqAtom.PositionY, x2 = atom.PositionX, y2 = atom.PositionY });
+                edges.Add(new { x1 = reqAtom.PositionX, y1 = RY(reqAtom), x2 = atom.PositionX, y2 = RY(atom) });
             }
         }
         try { await JS.InvokeVoidAsync("AgeOfLiberty.updateEdges", edges); } catch { }
@@ -687,26 +2066,48 @@ else
     [JSInvokable]
     public void OnGestureUpdate(double panX, double panY, double zoom)
     {
-        _panX = panX;
-        _panY = panY;
-        _zoom = zoom;
+        _panX = panX; _panY = panY; _zoom = zoom;
         InvokeAsync(StateHasChanged);
     }
 
     private void OnStateChanged()
     {
+        _saveDirty = true;
         InvokeAsync(StateHasChanged);
+    }
+
+    private void SetTab(Tab tab)
+    {
+        try { _ = JS.InvokeVoidAsync("AgeOfLibertyJuice.setActive", tab == Tab.Map); } catch { }
+        _activeTab = tab;
+        if (tab == Tab.Map) { _gesturesInitialized = false; _edgeParticlesInitialized = false; }
+        StateHasChanged();
     }
 
     private async void StartGame()
     {
-        if (string.IsNullOrWhiteSpace(State.CityName))
-            State.CityName = "Liberty City";
+        if (string.IsNullOrWhiteSpace(State.CityName)) State.CityName = "Liberty City";
         State.Phase = GamePhase.Play;
         Economy.Start();
+        // Fresh experiment: clear old save + reset the issue ladder
+        SaveService.Delete();
+        IssueProgress.Reset(Config.Eras.Select(e => e.Id));
+        NotificationHelper.RequestPermission();
+        _issueEraId = -1;
+        _lastCeremonyEra = 0;
+        _eraStartUtc = DateTime.UtcNow;
+        _eraStartPop = State.Population;
+        StartIssueTicker();
+        if (!Preferences.Get("aol_tutorial_done", false)) _ = RunTutorial();
+        // Initialize badge tracking with current state
+        foreach (var atom in Config.Atoms)
+        {
+            _lastBadgeTiers[atom.Id] = GetBadgeTier(atom.Id);
+        }
         State.NotifyStateChanged();
-
-        // Re-init particles after phase change
+        await JS.InvokeVoidAsync("AgeOfLibertyAudio.init");
+        await JS.InvokeVoidAsync("AgeOfLibertyAudio.playMusic");
+        try { _musicVolume = await JS.InvokeAsync<double>("AgeOfLibertyAudio.getMusicVolume"); _sfxVolume = await JS.InvokeAsync<double>("AgeOfLibertyAudio.getSfxVolume"); } catch { }
         await Task.Delay(200);
         _particlesInitialized = false;
         _gesturesInitialized = false;
@@ -714,7 +2115,7 @@ else
         StateHasChanged();
     }
 
-    private void SelectAtom(int atomId)
+    private async void SelectAtom(int atomId)
     {
         if (State.SelectedAtomId == atomId)
         {
@@ -725,84 +2126,238 @@ else
         {
             State.SelectedAtomId = atomId;
             State.DrawerOpen = true;
+            if (Config.AtomsById.TryGetValue(atomId, out var atom))
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("AgeOfLibertyAudio.sfxTap");
+                    await JS.InvokeVoidAsync("AgeOfLibertyJuice.nodeTapAt", "atomSvg", atom.PositionX, RY(atom));
+                }
+                catch { }
+            }
         }
         State.NotifyStateChanged();
     }
 
-    private void CloseDrawer()
-    {
-        State.DrawerOpen = false;
-        State.SelectedAtomId = null;
-        State.NotifyStateChanged();
-    }
+    private void CloseDrawer() { State.DrawerOpen = false; State.SelectedAtomId = null; _buildMenuOpen = false; State.NotifyStateChanged(); }
 
-    private void ToggleChronicle() => _chronicleOpen = !_chronicleOpen;
+    private void DismissFeedback() { State.FeedbackText = null; State.NotifyStateChanged(); }
 
-    private async Task DismissEraUnlock()
-    {
-        try { await JS.InvokeVoidAsync("AgeOfLiberty.hideEraUnlock"); } catch { }
-        // Wait for fade-out animation to complete
-        await Task.Delay(850);
-        State.EraUnlockAnimIndex = null;
-        _lastEraUnlockIdx = null;
-        State.NotifyStateChanged();
-    }
+    private double _drawerTouchY;
+    private void DrawerTouchStart(TouchEventArgs e) { if (e.Touches.Length > 0) _drawerTouchY = e.Touches[0].ClientY; }
+    private void DrawerTouchMove(TouchEventArgs e) { if (e.Touches.Length > 0 && e.Touches[0].ClientY - _drawerTouchY > 60) CloseDrawer(); }
 
-    private void HandleChoice(int choiceId)
+    private async void HandleChoice(int choiceId)
     {
         Scenarios.MakeChoice(choiceId);
+        // Issue answered: climb the geometric ladder
+        IssueProgress.SetDone(_issueEraId, Math.Min(EraIssuesTotal, IssueProgress.Done(_issueEraId) + 1));
+        ScheduleNextIssue();
+        try { await JS.InvokeVoidAsync("AgeOfLibertyAudio.sfxChoice"); } catch { }
         StateHasChanged();
     }
 
-    private void ToggleSummary()
+    private static string FmtEraTime(TimeSpan t)
     {
-        State.ShowSummary = !State.ShowSummary;
+        if (t.TotalHours >= 1) return $"{(int)t.TotalHours}h {t.Minutes:D2}m";
+        return $"{(int)t.TotalMinutes}m {t.Seconds:D2}s";
+    }
+
+    private async Task OnEraOverlayTap()
+    {
+        // Grace period: the announcement pops without warning — swallow the
+        // accidental tap that was aimed at something underneath.
+        if (_eraRevealPhase != EraRevealPhase.ChestReveal
+            && (DateTime.UtcNow - _ceremonyShownAt).TotalMilliseconds < 1400) return;
+
+        if (_eraRevealPhase == EraRevealPhase.ChestReveal)
+        {
+            await ChestTap();
+        }
+        else
+        {
+            await TransitionToChest();
+        }
+    }
+
+    private async Task TransitionToChest()
+    {
+        if (State.EraUnlockAnimIndex is int idx)
+        {
+            _eraRevealEraIdx = idx;
+            _eraRevealPhase = EraRevealPhase.ChestReveal;
+
+            // Clear era state — the 3D scene persists through the transition
+            State.EraUnlockAnimIndex = null;
+            _lastEraUnlockIdx = null;
+            State.NotifyStateChanged();
+
+            // Tell the unified module to transition badge → chest
+            await Task.Delay(100);
+            try
+            {
+                var dotnetRef = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("AgeOfLibertyEra.transitionToChest", dotnetRef);
+            }
+            catch { }
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnChestOpened()
+    {
+        // Called from JS when chest finishes opening — start revealing atom cards
+        var chestEra = Config.Eras[_eraRevealEraIdx];
+        var newAtoms = Config.Atoms.Where(a => a.EraId == chestEra.Id).ToList();
+
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(100);
+
+        // Reveal cards one by one using the juice module
+        for (var i = 0; i < newAtoms.Count; i++)
+        {
+            try { await JS.InvokeVoidAsync("AgeOfLibertyJuice.revealAtomCard", i); } catch { }
+            await Task.Delay(400);
+        }
+
+        // Slide chest down to make room for cards + button
+        try { await JS.InvokeVoidAsync("AgeOfLibertyEra.slideChestDown"); } catch { }
+        await Task.Delay(400);
+
+        // Show continue button
+        try { await JS.InvokeVoidAsync("AgeOfLibertyJuice.showChestContinue"); } catch { }
+    }
+
+    private async Task ChestTap()
+    {
+        // Skip — reveal all remaining cards instantly
+        var chestEra = Config.Eras[_eraRevealEraIdx];
+        var count = Config.Atoms.Count(a => a.EraId == chestEra.Id);
+        for (var i = 0; i < count; i++)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("eval",
+                    $"var c=document.getElementById('atomCard_{i}');if(c){{c.style.display='flex';c.style.opacity='1';c.style.transform='translateY(0) scale(1)';}}");
+            }
+            catch { }
+        }
+        // Slide chest down and show button
+        try { await JS.InvokeVoidAsync("AgeOfLibertyEra.slideChestDown"); } catch { }
+        try
+        {
+            await JS.InvokeVoidAsync("eval",
+                "var b=document.getElementById('chestContinueBtn');if(b){b.style.display='block';b.style.opacity='1';b.style.transform='translateY(0)';}");
+        }
+        catch { }
+    }
+
+    private async Task DismissChest()
+    {
+        try { await JS.InvokeVoidAsync("AgeOfLibertyEra.fadeOut", 0.5); } catch { }
+        await Task.Delay(550);
+        _lastCeremonyEra = Math.Max(_lastCeremonyEra, _eraRevealEraIdx);
+        _eraRevealPhase = EraRevealPhase.None;
+        _eraRevealEraIdx = -1;
+        // New era begins: reset baselines and unfreeze the simulation
+        _eraStartUtc = DateTime.UtcNow;
+        _eraStartPop = State.Population;
+        Economy.Start();
+        try { _ = JS.InvokeVoidAsync("AgeOfLibertyJuice.setActive", _activeTab == Tab.Map); } catch { }
         StateHasChanged();
     }
 
     private async Task ShareCity()
     {
         var freedom = State.ComputeFreedomScore();
-        var text = $"🏛️ {State.CityName}\n{CurrentEra.Name} era · Turn {State.Turn}\n👥 {EconomyEngine.FormatNumber(State.Population)} citizens · 💰 SFL$ {EconomyEngine.FormatNumber(State.Gold)}\n\n🗽 Liberty Index: {freedom.Score}/100 — \"{freedom.Title}\"\nGrade: {freedom.Grade}\n\nCan you build a freer city? 🌍\n#AgeOfLiberty #StudentsForLiberty";
+        var text = $"🏛️ {State.CityName}\n{CurrentEra.Name} era · Turn {State.Turn}\n👥 {EconomyEngine.FormatNumber(State.Population)} citizens · 💰 ${EconomyEngine.FormatNumber(State.Gold)}\n\n🗽 Liberty Index: {freedom.Score}/100 — \"{freedom.Title}\"\n\nCan you build a freer city?\n#AgeOfLiberty";
         await JS.InvokeVoidAsync("AgeOfLiberty.shareCity", text);
     }
 
-    private async Task ZoomIn()
+    private bool _buildMenuOpen;
+
+    private async void BuildMany(int atomId, int count)
     {
-        _zoom = Math.Min(2.5, _zoom + 0.2);
-        await JS.InvokeVoidAsync("AgeOfLiberty.setGestureState", _panX, _panY, _zoom);
+        _buildMenuOpen = false;
+        if (!Config.AtomsById.TryGetValue(atomId, out var atom)) { StateHasChanged(); return; }
+        int built = 0;
+        long spent = 0;
+        for (int i = 0; i < count; i++)
+        {
+            var unitCost = State.GetBuildCost(atom, Config);
+            if (!Economy.TryBuild(atomId)) break;
+            built++;
+            spent += unitCost;
+        }
+        if (built > 0)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("AgeOfLibertyAudio.sfxBuild");
+                await JS.InvokeVoidAsync("AgeOfLibertyJuice.buildCelebrationAt",
+                    "atomSvg", atom.PositionX, RY(atom), atom.PopGain * built, spent);
+                await JS.InvokeVoidAsync("AgeOfLibertyJuice.floatText",
+                    "atomSvg", atom.PositionX, RY(atom) - 46, $"×{built} built", "#f0c860");
+                await JS.InvokeVoidAsync("AgeOfLibertyJuice.hudBump", "hudGold");
+            }
+            catch { }
+            await CheckAndShowBadge(atomId);
+        }
+        StateHasChanged();
     }
 
-    private async Task ZoomOut()
+    private async void BuildAtom(int atomId)
     {
-        _zoom = Math.Max(0.4, _zoom - 0.2);
-        await JS.InvokeVoidAsync("AgeOfLiberty.setGestureState", _panX, _panY, _zoom);
+        if (Config.AtomsById.TryGetValue(atomId, out var atom))
+        {
+            var cost = State.GetBuildCost(atom, Config);
+            if (Economy.TryBuild(atomId))
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("AgeOfLibertyAudio.sfxBuild");
+                    await JS.InvokeVoidAsync("AgeOfLibertyJuice.buildCelebrationAt",
+                        "atomSvg", atom.PositionX, RY(atom), atom.PopGain, cost);
+                    await JS.InvokeVoidAsync("AgeOfLibertyJuice.hudBump", "hudGold");
+                }
+                catch { }
+                // Check for new badge
+                await CheckAndShowBadge(atomId);
+            }
+        }
+        StateHasChanged();
     }
 
-    private async Task ZoomReset()
-    {
-        _zoom = 1; _panX = 0; _panY = 0;
-        await JS.InvokeVoidAsync("AgeOfLiberty.resetGesture");
-    }
+    private async Task ZoomIn() { _zoom = Math.Min(2.5, _zoom + 0.2); try { await JS.InvokeVoidAsync("AgeOfLiberty.setGestureState", _panX, _panY, _zoom); } catch { } }
+    private async Task ZoomOut() { _zoom = Math.Max(0.4, _zoom - 0.2); try { await JS.InvokeVoidAsync("AgeOfLiberty.setGestureState", _panX, _panY, _zoom); } catch { } }
+    private async Task ZoomReset() { _zoom = 1; _panX = 0; _panY = 0; try { await JS.InvokeVoidAsync("AgeOfLiberty.resetGesture"); } catch { } }
 
     private void OpenStockView(int atomId)
     {
-        _stockViewAtomId = atomId;
-        _compareAtomId = null;
-        StateHasChanged();
+        _selectedMarker = null; _stockViewAtomId = atomId; _compareAtomId = null; StateHasChanged();
     }
-
     private void CloseStockView()
     {
-        _stockViewAtomId = null;
-        _compareAtomId = null;
-        StateHasChanged();
+        _selectedMarker = null; _stockViewAtomId = null; _compareAtomId = null; StateHasChanged();
+    }
+
+    private async Task OnMusicVolumeChange(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), out var val)) { _musicVolume = val / 100.0; try { await JS.InvokeVoidAsync("AgeOfLibertyAudio.setMusicVolume", _musicVolume); } catch { } }
+    }
+    private async Task OnSfxVolumeChange(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), out var val)) { _sfxVolume = val / 100.0; try { await JS.InvokeVoidAsync("AgeOfLibertyAudio.setSfxVolume", _sfxVolume); } catch { } }
     }
 
     public void Dispose()
     {
+        FlushTimePlayed();
+        if (State.Phase != GamePhase.Intro) SaveService.Save(State, _eraStartUtc, _eraStartPop);
         State.OnStateChanged -= OnStateChanged;
         Economy.Stop();
+        _issueTicker?.Stop();
+        _issueTicker?.Dispose();
         _dotnetRef?.Dispose();
     }
 }

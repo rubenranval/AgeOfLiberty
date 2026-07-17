@@ -20,6 +20,24 @@ public static class MauiProgram
 
         builder.Services.AddMauiBlazorWebView();
 
+        Microsoft.AspNetCore.Components.WebView.Maui.BlazorWebViewHandler.BlazorWebViewMapper
+            .AppendToMapping("AllowAutoplay", (handler, view) =>
+            {
+#if ANDROID
+                handler.PlatformView.Settings.MediaPlaybackRequiresUserGesture = false;
+#endif
+            });
+
+        Microsoft.AspNetCore.Components.WebView.Maui.BlazorWebViewHandler.BlazorWebViewMapper
+    .AppendToMapping("iOSMediaConfig", (handler, view) =>
+    {
+#if IOS
+        handler.PlatformView.Configuration.AllowsInlineMediaPlayback = true;
+        handler.PlatformView.Configuration.MediaTypesRequiringUserActionForPlayback =
+            WebKit.WKAudiovisualMediaTypes.None;
+#endif
+    });
+
 #if DEBUG
         builder.Services.AddBlazorWebViewDeveloperTools();
         builder.Logging.AddDebug();

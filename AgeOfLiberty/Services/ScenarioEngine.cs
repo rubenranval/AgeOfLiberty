@@ -19,27 +19,7 @@ public class ScenarioEngine
 
     public void CheckTriggers()
     {
-        if (_state.ActiveScenario != null) return;
-
-        var eraIndex = _config.GetEraIndex(_state.Population);
-        var maxEraId = _config.Eras.Take(eraIndex + 1).Select(e => e.Id).ToHashSet();
-
-        var next = _config.Scenarios
-            .Where(s => !_state.ScenariosDone.Contains(s.Slug)
-                     && maxEraId.Contains(s.EraId)
-                     && _state.Population >= s.TriggerPop)
-            .FirstOrDefault();
-
-        if (next != null)
-        {
-            Task.Delay(600).ContinueWith(_ =>
-            {
-                _state.ActiveScenario = next;
-                _state.Phase = GamePhase.Scenario;
-                Economy?.Stop();
-                _state.NotifyStateChanged();
-            });
-        }
+       
     }
 
     public void MakeChoice(int choiceId)
@@ -82,10 +62,13 @@ public class ScenarioEngine
             Label = choice.Label,
             FreedomWeight = choice.FreedomWeight,
             AffectedAtomIds = allAffected,
+            ChoiceId = choice.Id,
         });
 
         // Feedback
-        _state.FeedbackText = choice.Feedback;
+        //_state.FeedbackText = choice.Feedback;
+        var fb = choice.Feedback;
+        Task.Delay(3500).ContinueWith(_ => { _state.FeedbackText = fb; _state.NotifyStateChanged(); });
         _state.AddLog(choice.Feedback);
         _state.ScenariosDone.Add(_state.ActiveScenario.Slug);
         _state.ActiveScenario = null;
@@ -96,13 +79,13 @@ public class ScenarioEngine
         _state.NotifyStateChanged();
 
         // Clear feedback after 4s
-        Task.Delay(4000).ContinueWith(_ =>
-        {
-            if (_state.FeedbackText == choice.Feedback)
-            {
-                _state.FeedbackText = null;
-                _state.NotifyStateChanged();
-            }
-        });
+//        Task.Delay(4000).ContinueWith(_ =>
+//        {
+//            if (_state.FeedbackText == choice.Feedback)
+//            {
+//                _state.FeedbackText = null;
+//                _state.NotifyStateChanged();
+//            }
+//        });
     }
 }

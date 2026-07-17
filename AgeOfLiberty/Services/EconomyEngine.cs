@@ -3,7 +3,6 @@ using AgeOfLiberty.Services;
 
 namespace AgeOfLiberty.Services;
 
-
 public class EconomyEngine : IDisposable
 {
     private readonly GameState _state;
@@ -18,13 +17,19 @@ public class EconomyEngine : IDisposable
 
     private bool _running;
 
+    // ── Cascade tuning ──────────────────────────────────────────────────────
+    // How much of a price shock carries to atoms that depend on the shocked good.
+    // wood ×1.5 → hut ×1.28 → stable ×1.16 ... (mult^0.6 per hop)
+    private const double CascadeDamping = 0.5;
+    private const int CascadeHopDelayMs = 700;
+    private const int CascadeMaxHops = 2;
+
     public EconomyEngine(GameState state, GameConfigStore config, ScenarioEngine scenarios)
     {
         _state = state;
         _config = config;
         _scenarios = scenarios;
     }
-
 
     public void Start()
     {
@@ -48,7 +53,6 @@ public class EconomyEngine : IDisposable
     }
 
     public void Dispose() => Stop();
-
 
     private void TickIncome()
     {
@@ -90,7 +94,6 @@ public class EconomyEngine : IDisposable
         _state.NotifyStateChanged();
     }
 
-
     private void TickJitter()
     {
         if (_state.Phase != GamePhase.Play) return;
@@ -107,7 +110,6 @@ public class EconomyEngine : IDisposable
         _state.NotifyStateChanged();
     }
 
-
     private void TickTurn()
     {
         if (_state.Phase != GamePhase.Play) return;
@@ -117,7 +119,8 @@ public class EconomyEngine : IDisposable
 
         _state.Turn++;
 
-        // enregistrer événements
+        // Record snapshots — GetCleanPrice MUST include PriceMultipliers
+        // (base × multipliers, no jitter), or charts will never move.
         var prices = new Dictionary<int, int>();
         foreach (var atom in _config.Atoms)
             prices[atom.Id] = _state.GetCleanPrice(atom);
@@ -125,9 +128,11 @@ public class EconomyEngine : IDisposable
         _state.PriceHistory.Add(new PriceSnapshot { Turn = _state.Turn, Prices = prices });
         _state.PopHistory.Add(new PopSnapshot { Turn = _state.Turn, Pop = _state.Population, Gold = _state.Gold });
 
-     
-        if (_state.PriceHistory.Count > 100) _state.PriceHistory.RemoveAt(0);
-        if (_state.PopHistory.Count > 100) _state.PopHistory.RemoveAt(0);
+        // Keep enough history for long sessions — chart math assumes
+        // index == turn-1, so trimming would desynchronize markers and
+        // the ghost line. 600 turns ≈ 2.5h of play.
+        if (_state.PriceHistory.Count > 600) _state.PriceHistory.RemoveAt(0);
+        if (_state.PopHistory.Count > 600) _state.PopHistory.RemoveAt(0);
 
         ProcessDelayedEffects();
 
@@ -136,7 +141,6 @@ public class EconomyEngine : IDisposable
         _state.NotifyStateChanged();
     }
 
-
     private void ProcessDelayedEffects()
     {
         var ready = _state.DelayedEffects.Where(e => e.TriggerTurn <= _state.Turn).ToList();
@@ -144,20 +148,16 @@ public class EconomyEngine : IDisposable
         {
             ApplyEffects(effect.Effects);
             _state.AddLog(effect.Feedback);
-            _state.FeedbackText = effect.Feedback;
             _state.DelayedEffects.Remove(effect);
-
-            Task.Delay(4000).ContinueWith(_ =>
+            // Let the cascade play out before the modal explains it
+            var fb = effect.Feedback;
+            Task.Delay(3500).ContinueWith(_ =>
             {
-                if (_state.FeedbackText == effect.Feedback)
-                {
-                    _state.FeedbackText = null;
-                    _state.NotifyStateChanged();
-                }
+                _state.FeedbackText = fb;
+                _state.NotifyStateChanged();
             });
         }
     }
-
 
     public bool TryBuild(int atomId)
     {
@@ -181,31 +181,87 @@ public class EconomyEngine : IDisposable
         return true;
     }
 
-    // ── Cascade ─────────────────────────────────────────────────────────────
+    // ── Cascade: shocks travel the dependency graph ─────────────────────────
+    //
+    // A choice shocks its target atoms directly. Then the shock PROPAGATES:
+    // every atom that requires a shocked good inherits a damped version of
+    // the shock (mult^damping per hop), breadth-first, up to CascadeMaxHops.
+    // Each hop lands CascadeHopDelayMs after the previous — matching the
+    // traveling-pulse animation on the map.
 
     public void ApplyEffects(Dictionary<int, double> effects)
     {
-        var keys = effects.Keys.ToList();
-        for (int i = 0; i < keys.Count; i++)
+        // Shocks only touch the economy that exists: locked (future-era)
+        // atoms are excluded from both direct hits and propagation.
+        // NOTE: uses the GATED era (pop threshold AND issues answered), which
+        // is what the map actually renders — population alone runs ahead of it.
+        var availableIds = _config
+            .GetAvailableAtoms(GatedEraIndex())
+            .Select(a => a.Id).ToHashSet();
+
+        // hop 0: the direct shocks
+        var wave = effects.Where(kv => availableIds.Contains(kv.Key))
+                          .ToDictionary(kv => kv.Key, kv => kv.Value);
+        var visited = new HashSet<int>(wave.Keys);
+
+        for (int hop = 0; hop <= CascadeMaxHops && wave.Count > 0; hop++)
         {
-            var atomId = keys[i];
-            var delay = i * 700;
-            var mult = effects[atomId];
-
-            Task.Delay(delay).ContinueWith(_ =>
+            foreach (var (atomId, mult) in wave)
             {
-                _state.Cascading[atomId] = true;
-                var old = _state.PriceMultipliers.GetValueOrDefault(atomId, 1.0);
-                _state.PriceMultipliers[atomId] = Math.Round(old * mult * 100) / 100;
-                _state.NotifyStateChanged();
+                ScheduleShock(atomId, mult, hop * CascadeHopDelayMs, hop == 0 ? 2500 : 1400);
+            }
 
-                Task.Delay(2500).ContinueWith(_ =>
+            // Build the next wave: dependents of everything in this wave
+            var next = new Dictionary<int, double>();
+            foreach (var (atomId, mult) in wave)
+            {
+                // Skip negligible ripples
+                var carried = Math.Pow(mult, CascadeDamping);
+                if (Math.Abs(carried - 1.0) < 0.05) continue;
+
+                foreach (var dep in _config.Dependencies.Where(d => d.RequiresAtomId == atomId))
                 {
-                    _state.Cascading[atomId] = false;
-                    _state.NotifyStateChanged();
-                });
-            });
+                    if (visited.Contains(dep.AtomId) || !availableIds.Contains(dep.AtomId)) continue;
+                    // If two inputs of the same atom are shocked, compound them
+                    next[dep.AtomId] = next.GetValueOrDefault(dep.AtomId, 1.0) * carried;
+                }
+            }
+            foreach (var k in next.Keys) visited.Add(k);
+            wave = next;
         }
+    }
+
+    private void ScheduleShock(int atomId, double mult, int delayMs, int visualMs)
+    {
+        Task.Delay(delayMs).ContinueWith(_ =>
+        {
+            _state.Cascading[atomId] = true;
+            var old = _state.PriceMultipliers.GetValueOrDefault(atomId, 1.0);
+            _state.PriceMultipliers[atomId] = Math.Round(old * mult * 100) / 100;
+            _state.NotifyStateChanged();
+
+            Task.Delay(2500).ContinueWith(_ =>
+            {
+                _state.Cascading[atomId] = false;
+                _state.NotifyStateChanged();
+            });
+        });
+    }
+
+    // Mirror of the GamePage gate: era N is live only when pop crossed AND
+    // every issue of eras 0..N-1 has been answered (read from Preferences).
+    private int GatedEraIndex()
+    {
+        int allowed = 0;
+        int popIdx = _config.GetEraIndex(_state.Population);
+        while (allowed < popIdx)
+        {
+            var era = _config.Eras[allowed];
+            int total = _config.Scenarios.Count(sc => sc.EraId == era.Id);
+            if (IssueProgress.Done(era.Id) >= total) allowed++;
+            else break;
+        }
+        return allowed;
     }
 
     // ── Era detection ───────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 window.AgeOfLiberty = {
 
+    // ─── BACKGROUND PARTICLES ───────────────────────────────────────────────
     _bgRaf: null,
     _bgParticles: [],
 
@@ -364,7 +365,7 @@ window.AgeOfLiberty = {
             if (!container) return;
 
             this.scene = new THREE.Scene();
-            this.scene.fog = new THREE.FogExp2(0x0a0802, 0.025);
+            this.scene.fog = new THREE.FogExp2(0x2a2010, 0.012);
 
             this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
             this.camera.position.set(0, 0, 10);
@@ -379,7 +380,7 @@ window.AgeOfLiberty = {
             this.scene.add(this.group);
 
             // Warm golden lighting
-            this.scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+            this.scene.add(new THREE.AmbientLight(0xffeedd, 0.5));
             var dl = new THREE.DirectionalLight(0xffeebb, 2.5);
             dl.position.set(5, 5, 7); this.scene.add(dl);
             var dl2 = new THREE.DirectionalLight(0xffddaa, 1.0);
@@ -417,7 +418,7 @@ window.AgeOfLiberty = {
                 this._addFallbackShape(goldMaterial);
             }
 
-            this._glowTexture = this._createGlowTexture(255, 200, 80);
+            this._glowTexture = this._createGlowTexture(255, 210, 100);
             this.createParticles();
             this.clock = new THREE.Clock();
 
@@ -467,72 +468,38 @@ window.AgeOfLiberty = {
             setTimeout(function () {
                 if (!self.scene) return;
 
-                // Soft volumetric torus — main ring
-                var torus = new THREE.Mesh(
-                    new THREE.TorusGeometry(1.0, 0.15, 16, 80),
+                // One clean expanding ring facing the camera
+                var ring = new THREE.Mesh(
+                    new THREE.RingGeometry(0.8, 1.0, 64),
                     new THREE.MeshBasicMaterial({
                         color: 0xffcc44, transparent: true, opacity: 0,
-                        blending: THREE.AdditiveBlending
+                        side: THREE.DoubleSide, blending: THREE.AdditiveBlending
                     })
                 );
-                var rx = Math.PI / 2 + (Math.random() - 0.5) * 0.3;
-                var rz = (Math.random() - 0.5) * 0.2;
-                torus.rotation.x = rx; torus.rotation.z = rz;
-                self.scene.add(torus);
+                self.scene.add(ring);
+                self.waves.push({ mesh: ring, age: 0, speed: 0.8, expand: 6, maxOp: 0.6 });
 
-                // Softer wider halo torus
-                var halo = new THREE.Mesh(
-                    new THREE.TorusGeometry(0.85, 0.35, 12, 64),
-                    new THREE.MeshBasicMaterial({
-                        color: 0xffeecc, transparent: true, opacity: 0,
-                        blending: THREE.AdditiveBlending
-                    })
-                );
-                halo.rotation.x = rx; halo.rotation.z = rz;
-                self.scene.add(halo);
-
-                self.waves.push(
-                    { mesh: torus, age: 0, speed: 0.75, expand: 5.5, maxOp: 0.65 },
-                    { mesh: halo, age: 0, speed: 0.65, expand: 5.0, maxOp: 0.25 }
-                );
-
-                // Burst of glowing sparks
-                var sparkCount = 25 + Math.floor(Math.random() * 20);
-                for (var i = 0; i < sparkCount; i++) {
-                    var angle = Math.random() * Math.PI * 2;
-                    var elevation = (Math.random() - 0.5) * 0.5;
-                    var speed = 2.0 + Math.random() * 3.5;
-                    var sparkMesh = new THREE.Mesh(
-                        new THREE.SphereGeometry(0.03 + Math.random() * 0.04, 8, 8),
+                // A few fast sparks
+                for (var i = 0; i < 12; i++) {
+                    var angle = (i / 12) * Math.PI * 2 + Math.random() * 0.3;
+                    var speed = 3 + Math.random() * 2;
+                    var spark = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.03, 6, 6),
                         new THREE.MeshBasicMaterial({
-                            color: Math.random() > 0.4 ? 0xffcc44 : (Math.random() > 0.5 ? 0xffffff : 0xffaa00),
-                            transparent: true, opacity: 1,
+                            color: 0xffdd66, transparent: true, opacity: 1,
                             blending: THREE.AdditiveBlending
                         })
                     );
-                    sparkMesh.position.set(0, 0, 0);
-                    self.scene.add(sparkMesh);
+                    self.scene.add(spark);
                     self.sparks.push({
-                        mesh: sparkMesh, age: 0,
+                        mesh: spark, age: 0,
                         vx: Math.cos(angle) * speed,
-                        vy: elevation * speed * 0.4,
-                        vz: Math.sin(angle) * speed,
-                        life: 0.7 + Math.random() * 0.7,
-                        drag: 0.955 + Math.random() * 0.03
+                        vy: Math.sin(angle) * speed,
+                        vz: 0,
+                        life: 0.5 + Math.random() * 0.3,
+                        drag: 0.94
                     });
                 }
-
-                // Soft glowing sphere that expands and fades (energy pulse)
-                var pulse = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.5, 24, 24),
-                    new THREE.MeshBasicMaterial({
-                        color: 0xffdd66, transparent: true, opacity: 0,
-                        blending: THREE.AdditiveBlending
-                    })
-                );
-                self.scene.add(pulse);
-                self.waves.push({ mesh: pulse, age: 0, speed: 1.0, expand: 8, maxOp: 0.3 });
-
             }, delay);
         },
 
@@ -581,7 +548,6 @@ window.AgeOfLiberty = {
                 sp.mesh.position.y += sp.vy * dt;
                 sp.mesh.position.z += sp.vz * dt;
                 sp.vx *= sp.drag; sp.vy *= sp.drag; sp.vz *= sp.drag;
-                sp.vy -= dt * 0.25;
 
                 var life = 1 - sp.age / sp.life;
                 sp.mesh.material.opacity = Math.max(0, life * life * life);
@@ -663,11 +629,9 @@ window.AgeOfLiberty = {
         }
 
         era.animate();
-        era.triggerWave(150);
-        era.triggerWave(500);
-        era.triggerWave(950);
-        era.triggerWave(1500);
-        era.triggerWave(2200);
+        era.triggerWave(200);
+        era.triggerWave(700);
+        era.triggerWave(1300);
     },
 
     hideEraUnlock: function () {
@@ -680,5 +644,176 @@ window.AgeOfLiberty = {
         } else {
             this._era3d.destroy();
         }
+    }
+};
+
+// ─── AUDIO MANAGER ──────────────────────────────────────────────────────────
+
+window.AgeOfLibertyAudio = {
+    _ctx: null,
+    _musicEl: null,
+    _musicVolume: 0.4,
+    _sfxVolume: 0.6,
+    _muted: false,
+    _currentTrack: 0,
+    _tracks: [
+        'assets/music/track1.mp3',
+        'assets/music/track2.mp3',
+    ],
+
+    init: function () {
+        if (this._ctx) return;
+        this._ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+        // Restore saved preferences
+        var savedMusic = localStorage.getItem('aol_music_vol');
+        var savedSfx = localStorage.getItem('aol_sfx_vol');
+        if (savedMusic !== null) this._musicVolume = parseFloat(savedMusic);
+        if (savedSfx !== null) this._sfxVolume = parseFloat(savedSfx);
+
+        // Create music element
+        this._musicEl = document.createElement('audio');
+        this._musicEl.loop = false;
+        this._musicEl.volume = this._musicVolume;
+        var self = this;
+        this._musicEl.addEventListener('ended', function () {
+            self._currentTrack = (self._currentTrack + 1) % self._tracks.length;
+            self.playMusic();
+        });
+    },
+
+    // ── Music ───────────────────────────────────────────────────────────────
+
+    playMusic: function () {
+        if (!this._musicEl) this.init();
+        var src = this._tracks[this._currentTrack];
+        this._musicEl.src = src;
+        this._musicEl.volume = this._musicVolume;
+        this._musicEl.play().catch(function () { /* autoplay blocked, will start on interaction */ });
+    },
+
+    stopMusic: function () {
+        if (this._musicEl) {
+            this._musicEl.pause();
+            this._musicEl.currentTime = 0;
+        }
+    },
+
+    setMusicVolume: function (vol) {
+        this._musicVolume = Math.max(0, Math.min(1, vol));
+        if (this._musicEl) this._musicEl.volume = this._musicVolume;
+        localStorage.setItem('aol_music_vol', this._musicVolume);
+    },
+
+    setSfxVolume: function (vol) {
+        this._sfxVolume = Math.max(0, Math.min(1, vol));
+        localStorage.setItem('aol_sfx_vol', this._sfxVolume);
+    },
+
+    getMusicVolume: function () { return this._musicVolume; },
+    getSfxVolume: function () { return this._sfxVolume; },
+
+    // ── Procedural SFX ──────────────────────────────────────────────────────
+
+    _playTone: function (freq, duration, type, gainVal, rampDown) {
+        if (!this._ctx || this._sfxVolume <= 0) return;
+        if (this._ctx.state === 'suspended') this._ctx.resume();
+        var osc = this._ctx.createOscillator();
+        var gain = this._ctx.createGain();
+        osc.type = type || 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(gainVal * this._sfxVolume, this._ctx.currentTime);
+        if (rampDown !== false) {
+            gain.gain.exponentialRampToValueAtTime(0.001, this._ctx.currentTime + duration);
+        }
+        osc.connect(gain);
+        gain.connect(this._ctx.destination);
+        osc.start();
+        osc.stop(this._ctx.currentTime + duration);
+    },
+
+    // Build confirmed — ascending two-note chime
+    sfxBuild: function () {
+        this._playTone(523, 0.12, 'sine', 0.3);     // C5
+        var self = this;
+        setTimeout(function () {
+            self._playTone(659, 0.18, 'sine', 0.25);  // E5
+        }, 80);
+    },
+
+    // Atom selected — soft click
+    sfxTap: function () {
+        this._playTone(800, 0.06, 'sine', 0.15);
+    },
+
+    // Scenario arrives — dramatic low sting
+    sfxScenario: function () {
+        this._playTone(220, 0.4, 'sawtooth', 0.15);   // A3 sawtooth
+        var self = this;
+        setTimeout(function () {
+            self._playTone(165, 0.5, 'sawtooth', 0.12); // E3
+        }, 150);
+    },
+
+    // Choice made — confirmation tone
+    sfxChoice: function () {
+        this._playTone(440, 0.1, 'sine', 0.2);
+        var self = this;
+        setTimeout(function () {
+            self._playTone(554, 0.1, 'sine', 0.18);   // C#5
+        }, 60);
+        setTimeout(function () {
+            self._playTone(659, 0.15, 'sine', 0.15);  // E5
+        }, 120);
+    },
+
+    // Cascade ripple — descending tone sweep
+    sfxCascade: function () {
+        if (!this._ctx || this._sfxVolume <= 0) return;
+        if (this._ctx.state === 'suspended') this._ctx.resume();
+        var osc = this._ctx.createOscillator();
+        var gain = this._ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, this._ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(200, this._ctx.currentTime + 0.6);
+        gain.gain.setValueAtTime(0.2 * this._sfxVolume, this._ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this._ctx.currentTime + 0.7);
+        osc.connect(gain);
+        gain.connect(this._ctx.destination);
+        osc.start();
+        osc.stop(this._ctx.currentTime + 0.7);
+    },
+
+    // Era unlock — triumphant fanfare
+    sfxEraUnlock: function () {
+        var notes = [523, 659, 784, 1047]; // C5, E5, G5, C6
+        var self = this;
+        notes.forEach(function (freq, i) {
+            setTimeout(function () {
+                self._playTone(freq, 0.3, 'sine', 0.25);
+            }, i * 120);
+        });
+        // Low foundation
+        setTimeout(function () {
+            self._playTone(262, 0.8, 'triangle', 0.15); // C4
+        }, 50);
+    },
+
+    // Gold tick — very subtle coin clink
+    sfxGold: function () {
+        this._playTone(2400, 0.04, 'sine', 0.06);
+        var self = this;
+        setTimeout(function () {
+            self._playTone(3200, 0.03, 'sine', 0.04);
+        }, 25);
+    },
+
+    // Toast / feedback notification
+    sfxNotify: function () {
+        this._playTone(660, 0.08, 'sine', 0.15);
+        var self = this;
+        setTimeout(function () {
+            self._playTone(880, 0.12, 'sine', 0.12);
+        }, 60);
     }
 };
