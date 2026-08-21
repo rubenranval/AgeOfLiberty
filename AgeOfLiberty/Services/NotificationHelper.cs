@@ -13,11 +13,25 @@ namespace AgeOfLiberty.Services;
 public static class NotificationHelper
 {
     private const int IssueNotifId = 4201;
+    private const string PrefKey = "aol_notifs_enabled";
+
+    /// <summary>User preference (Settings toggle). Persisted via MAUI Preferences.
+    /// Turning it off also cancels anything already scheduled.</summary>
+    public static bool Enabled
+    {
+        get { try { return Microsoft.Maui.Storage.Preferences.Get(PrefKey, true); } catch { return true; } }
+        set
+        {
+            try { Microsoft.Maui.Storage.Preferences.Set(PrefKey, value); } catch { }
+            if (!value) CancelIssue();
+        }
+    }
 
     public static async void ScheduleIssue(DateTime utc)
     {
         try
         {
+            if (!Enabled) return;
             CancelIssue();
             var local = utc.ToLocalTime();
             if (local <= DateTime.Now.AddSeconds(10)) return; // too soon to bother the OS

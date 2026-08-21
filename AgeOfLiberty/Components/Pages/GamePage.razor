@@ -12,9 +12,12 @@
 
 @if (!_loaded)
 {
-    <div style="intro-stage">
-        
-        <div style="boot-status">@(_loadError ?? "Updating...")</div>
+    <div class="load-screen">
+        <div class="load-core">
+            <div class="load-mark">Age of Liberty</div>
+            <div class="load-bar"><div class="load-bar-fill @(_loadError != null ? "halt" : "")"></div></div>
+            <div class="boot-status @(_loadError != null ? "load-err" : "")">@(_loadError ?? "Retrieving simulation data")</div>
+        </div>
     </div>
 }
 else
@@ -104,14 +107,6 @@ else
                     </div>
                 </div>
 
-                <!-- Zoom controls -->
-                <div class="zoom-controls">
-                    <button class="zoom-btn" @onclick="ZoomIn">+</button>
-                    <div class="zoom-level">@((int)(_zoom * 100))%</div>
-                    <button class="zoom-btn" @onclick="ZoomOut">−</button>
-                    <button class="zoom-btn zoom-reset" @onclick="ZoomReset">⟲</button>
-                </div>
-
                 <!-- Toast -->
                 @if (State.FeedbackText != null)
                 {
@@ -160,7 +155,7 @@ else
                         <!-- Shared 3D canvas — persists through both phases -->
                         <div id="eraChestCanvas" class="era-3d-canvas"></div>
 
-                        @if (_eraRevealPhase != EraRevealPhase.ChestReveal && showingEraIdx >= 0 && showingEraIdx < Config.Eras.Count)
+                        @if ((_eraRevealPhase == EraRevealPhase.None || _eraRevealPhase == EraRevealPhase.Announcement) && showingEraIdx >= 0 && showingEraIdx < Config.Eras.Count)
                         {
                             <!-- Phase 1: Era Announcement -->
                             var eraData = Config.Eras[showingEraIdx];
@@ -188,6 +183,26 @@ else
                                         <span class="era-stat-label">Citizens gained</span>
                                     </div>
                                 </div>
+                                <div class="era-unlock-tap">Tap to continue</div>
+                            </div>
+                        }
+
+                        @if (_eraRevealPhase == EraRevealPhase.Address && showingEraIdx >= 0 && showingEraIdx < Config.Eras.Count)
+                        {
+                            <!-- Phase 1.5: The Engine's Era Address -->
+                            var addrEra = Config.Eras[showingEraIdx];
+                            <button class="intro-skip" @onclick="SkipCeremony" @onclick:stopPropagation="true">SKIP ›</button>
+                            <div class="era-address-tint" style="background: radial-gradient(ellipse 110% 70% at 50% 28%, @(addrEra.Color)44 0%, rgba(4,7,13,0) 58%), linear-gradient(180deg, rgba(4,7,13,0.35) 0%, rgba(4,7,13,0.9) 82%);"></div>
+
+                            <div class="era-unlock-top">
+                                <div class="era-unlock-name">@addrEra.Name</div>
+                            </div>
+
+                            <div class="era-address-dialogue">
+                                <span id="eraAddressLine"></span><span class="intro-caret"></span>
+                            </div>
+
+                            <div class="era-unlock-bottom">
                                 <div class="era-unlock-tap">Tap to continue</div>
                             </div>
                         }
@@ -231,27 +246,50 @@ else
                     var character = Config.CharsById.GetValueOrDefault(s.CharacterId);
                     var choices = Config.GetChoices(s.Id);
                     <div class="overlay">
-                        <div class="scenario-card">
-                            <span class="bracket tl"></span><span class="bracket tr"></span>
-                            <span class="bracket bl"></span><span class="bracket br"></span>
-                            <div class="scanline"></div>
-                            <button class="scenario-close" @onclick="DismissIssue">✕</button>
-                            <div class="scenario-head">
-                                <span class="scenario-char-icon">@(character?.Icon ?? "❓")</span>
-                                <div>
-                                    <div class="scenario-char-name">@(character?.Name ?? "Unknown")</div>
-                                    <div class="scenario-char-role">@(character?.Role ?? "")</div>
+                        <div class="scenario-stack">
+                            @if (character != null)
+                            {
+                                <div class="char-bubble-anchor">
+                                    <div class="char-bubble">
+                                        <div class="char-bubble-who"><span class="bubble-who-name">@character.Name</span><span class="bubble-who-role"> · @character.Role</span></div>
+                                        @if (!string.IsNullOrWhiteSpace(s.CharacterLine))
+                                        {
+                                            <span id="charLine"></span><span class="intro-caret char-caret"></span>
+                                        }
+                                    </div>
                                 </div>
-                            </div>
-                            <p class="scenario-text">@s.Text</p>
-                            <div class="scenario-choices">
-                                @foreach (var choice in choices)
-                                {
-                                    var cid = choice.Id;
-                                    <button class="choice-btn" @onclick="() => HandleChoice(cid)">
-                                        @choice.Label
-                                    </button>
-                                }
+                            }
+                            <div class="scenario-card">
+                                <span class="bracket tl"></span><span class="bracket tr"></span>
+                                <span class="bracket bl"></span><span class="bracket br"></span>
+                                <div class="scanline"></div>
+                                <button class="scenario-close" @onclick="DismissIssue">✕</button>
+                                <div class="scenario-head">
+                                    <div class="char-hex">
+                                        @if (!string.IsNullOrWhiteSpace(character?.PortraitAsset))
+                                        {
+                                            <img src="assets/characters/@character.PortraitAsset" alt="" />
+                                        }
+                                        else
+                                        {
+                                            <span class="char-hex-emoji">@(character?.Icon ?? "❓")</span>
+                                        }
+                                    </div>
+                                    <div class="scenario-title-stack">
+                                        <div class="scenario-kicker">New Issue</div>
+                                        <div class="scenario-title">@s.Title</div>
+                                    </div>
+                                </div>
+                                <p class="scenario-text">@s.Text.Replace("{cityName}", State.CityName)</p>
+                                <div class="scenario-choices">
+                                    @foreach (var choice in choices)
+                                    {
+                                        var cid = choice.Id;
+                                        <button class="choice-btn" @onclick="() => HandleChoice(cid)">
+                                            @choice.Label
+                                        </button>
+                                    }
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -541,7 +579,14 @@ else
                                          stroke="@(isCasc ? "#ff5648" : isSel ? "#d4a843" : count > 0 ? eraColor : "rgba(96,150,200,0.4)")"
                                          stroke-width="@(isCasc ? "2.5" : isSel ? "2.5" : count > 0 ? "1.8" : "1")"
                                          filter="@(isCasc ? "url(#glow)" : isSel ? "url(#softglow)" : "none")" />
-                                @((MarkupString)$"<text x=\"{atom.PositionX}\" y=\"{RY(atom)}\" text-anchor=\"middle\" font-size=\"34\" dominant-baseline=\"central\">{atom.Icon}</text>")
+                                @if (!string.IsNullOrWhiteSpace(atom.SpriteAsset))
+                                {
+                                    <image href="@("assets/atoms/" + atom.SpriteAsset)" x="@(atom.PositionX - 49)" y="@(RY(atom) - 57)" width="92" height="92" />
+                                }
+                                else
+                                {
+                                    @((MarkupString)$"<text x=\"{atom.PositionX}\" y=\"{RY(atom)}\" text-anchor=\"middle\" font-size=\"34\" dominant-baseline=\"central\">{atom.Icon}</text>")
+                                }
                                 @((MarkupString)$"<text x=\"{atom.PositionX}\" y=\"{RY(atom) + 62}\" text-anchor=\"middle\" font-size=\"15\" fill=\"{(isCasc ? "#ff5648" : "#9ab4d4")}\" font-family=\"'Rajdhani', sans-serif\" font-weight=\"600\" letter-spacing=\"1\">{atom.Name}</text>")
                                 @((MarkupString)$"<text x=\"{atom.PositionX}\" y=\"{RY(atom) + 78}\" text-anchor=\"middle\" font-size=\"12\" fill=\"{(isCasc ? "#ff5648" : "#6a7a94")}\" font-family=\"'JetBrains Mono', monospace\">${EconomyEngine.FormatNumber(price)}</text>")
                                 @if (count > 0)
@@ -701,45 +746,186 @@ else
             {
                 <div class="city-view">
                     @{
-                        var f = State.ComputeFreedomScore();
-                        var totalBuildings = State.Built.Values.Sum();
-                        var fCirc = 2 * Math.PI * 45;
-                        var fOff = fCirc * (1 - f.Score / 100.0);
+                        var cur = CivicIndicators.ComputeAll(State, Config, Economy.GetIncomeRate());
+                        var cityIncome = Economy.GetIncomeRate();
                     }
-                    <div class="city-card city-header">
-                        <div style="font-size:40px;margin-bottom:8px;">🏛️</div>
-                        <div class="city-name">@State.CityName</div>
-                        <div class="city-sub">@CurrentEra.Name · Turn @State.Turn</div>
+                    <!-- ═══ CIVIC REGISTRY HEADER ═══ -->
+                    <div class="civic-header">
+                        <div class="civic-kicker">Civic Registry · Turn @State.Turn</div>
+                        <div class="civic-name">@State.CityName</div>
+                        <div class="civic-era">@CurrentEra.Name</div>
+                        <div class="civic-mood">@CivicIndicators.TierLine(CivicIndicators.CivicMood, cur[CivicIndicators.CivicMood])</div>
                     </div>
 
-                    <div class="city-card">
-                        <div class="liberty-ring-large">
-                            <svg width="110" height="110">
-                                <circle cx="55" cy="55" r="45" fill="none" stroke="#3a5070" stroke-width="6" />
-                                <circle cx="55" cy="55" r="45" fill="none" stroke="@(f.Score >= 70 ? "#d4a843" : f.Score >= 40 ? "#d4a843" : "#ff5648")"
-                                        stroke-width="6" stroke-dasharray="@fCirc.ToString("F1")" stroke-dashoffset="@fOff.ToString("F1")" stroke-linecap="round" />
+                    <!-- ═══ STAT STRIP ═══ -->
+                    <div class="stat-strip">
+                        <div class="strip-item">
+                            <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4" /><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7" /></svg>
+                            <div class="strip-value">@EconomyEngine.FormatNumber(State.Population)</div>
+                            <div class="strip-label">Citizens</div>
+                        </div>
+                        <div class="strip-item">
+                            <svg viewBox="0 0 24 24"><ellipse cx="12" cy="6.5" rx="7" ry="3" /><path d="M5 6.5v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5M5 11.5v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5" /></svg>
+                            <div class="strip-value">$@EconomyEngine.FormatNumber(State.Gold)</div>
+                            <div class="strip-label">Treasury</div>
+                        </div>
+                        <div class="strip-item">
+                            <svg viewBox="0 0 24 24"><path d="M4 19 L4 5 M4 19 L20 19" opacity="0.5" /><path d="M7 15 L11 10 L14 12.5 L19 6" /><path d="M19 6 L19 9.5 M19 6 L15.5 6" /></svg>
+                            <div class="strip-value">$@EconomyEngine.FormatNumber(cityIncome)</div>
+                            <div class="strip-label">Output / turn</div>
+                        </div>
+                        <div class="strip-item">
+                            <svg viewBox="0 0 24 24"><path d="M3 12 L8 12 L10 7 L13 17 L15 12 L21 12" /></svg>
+                            <div class="strip-value">@((35 + cur[CivicIndicators.LifeExpectancy] * 0.6).ToString("F0"))<span class="strip-unit">yrs</span></div>
+                            <div class="strip-label">Life expect.</div>
+                        </div>
+                        <div class="strip-item">
+                            <svg viewBox="0 0 24 24"><path d="M12 5.5c-2-1.8-6.5-1.8-8 .5v12c1.5-2.3 6-2.3 8-.5 2-1.8 6.5-1.8 8 .5v-12c-1.5-2.3-6-2.3-8-.5z" /><path d="M12 5.5 L12 17.5" /></svg>
+                            <div class="strip-value">@cur[CivicIndicators.Education].ToString("F0")</div>
+                            <div class="strip-label">Education</div>
+                        </div>
+                        <div class="strip-item">
+                            <svg viewBox="0 0 24 24"><path d="M4 9h9a3 3 0 1 0-3-3M4 14h13a3 3 0 1 1-3 3M4 19h7" /></svg>
+                            <div class="strip-value">@cur[CivicIndicators.AirQuality].ToString("F0")</div>
+                            <div class="strip-label">Air quality</div>
+                        </div>
+                    </div>
+
+                    <!-- ═══ CIVIC FINGERPRINT (radar) ═══ -->
+                    @{
+                        var rAxes = 12; var rcx = 150.0; var rcy = 132.0; var rR = 92.0;
+                        var rLbl = new[] { "LIB", "CRM", "LIFE", "AIR", "EDU", "MKT", "PRO", "IND", "BUR", "LAZ", "POL", "DEF" };
+                        var youPoly = RadarPoints(rAxes, rcx, rcy, rR, i => cur[i]);
+                        var themPoly = RadarPoints(rAxes, rcx, rcy, rR, i => CivicIndicators.SimAvg(i, State.Turn));
+                    }
+                    <div class="city-section">
+                        <div class="section-title">Civic Fingerprint</div>
+                        <div class="radar-selected">Selected · <span>@CivicIndicators.Names[_metricSel]</span></div>
+                        <svg class="radar" viewBox="0 0 300 276">
+                            @for (var ring = 1; ring <= 4; ring++)
+                            {
+                                var rv = ring * 25.0;
+                                <polygon points="@RadarPoints(rAxes, rcx, rcy, rR, _ => rv)" fill="none"
+                                         stroke="rgba(120,190,255,@(ring == 4 ? "0.18" : "0.08"))" stroke-width="1" />
+                            }
+                            @for (var ax = 0; ax < rAxes; ax++)
+                            {
+                                var cax = ax;
+                                var aAng = -Math.PI / 2 + ax * 2 * Math.PI / rAxes;
+                                var ax2 = rcx + rR * Math.Cos(aAng); var ay2 = rcy + rR * Math.Sin(aAng);
+                                var lx = rcx + (rR + 15) * Math.Cos(aAng); var ly = rcy + (rR + 15) * Math.Sin(aAng) + 3;
+                                <line x1="@rcx" y1="@rcy" x2="@ax2.ToString("F1")" y2="@ay2.ToString("F1")" stroke="rgba(120,190,255,0.08)" stroke-width="1" />
+                                <g @onclick="() => SelectMetric(cax)">
+                                    @((MarkupString)$"<text x=\"{lx:F1}\" y=\"{ly:F1}\" text-anchor=\"middle\" class=\"radar-lbl {(cax == _metricSel ? "on" : "")}\">{rLbl[cax]}</text>")
+                                </g>
+                            }
+                            <polygon points="@themPoly" fill="rgba(160,150,190,0.06)" stroke="rgba(160,150,190,0.55)"
+                                     stroke-width="1.4" stroke-dasharray="5 4" />
+                            <polygon points="@youPoly" fill="rgba(74,216,255,0.14)" stroke="#4ad8ff" stroke-width="2" stroke-linejoin="round" />
+                        </svg>
+                        <div class="metrics-legend" style="justify-content:center;">
+                            <span><i class="lg-you"></i>@State.CityName</span>
+                            <span><i class="lg-them"></i>Other cities</span>
+                        </div>
+                    </div>
+
+                    <!-- ═══ THE OBSERVATORY: every metric, charted ═══ -->
+                    @{
+                        var mh = State.IndicatorHistory;
+                        var mv = cur[_metricSel];
+                        var mAvgNow = CivicIndicators.SimAvg(_metricSel, State.Turn);
+                        var mInfl = CivicIndicators.GetInfluences(_metricSel, State, Config);
+                    }
+                    <div class="city-section">
+                        <div class="section-title">The Observatory</div>
+                        <div class="metric-chips">
+                            @for (var mi = 0; mi < CivicIndicators.Count; mi++)
+                            {
+                                var cmi = mi;
+                                <button class="metric-chip @(mi == _metricSel ? "on" : "")" @onclick="() => SelectMetric(cmi)">@CivicIndicators.Names[mi]</button>
+                            }
+                        </div>
+
+                        <div class="metrics-hero">
+                            <div class="metrics-value">@CivicIndicators.DisplayValue(_metricSel, mv, State, Config)</div>
+                            <div class="metrics-grades">
+                                <span class="metrics-grade you">@CivicIndicators.Grade(mv)</span>
+                                <span class="metrics-grade them">Others · @CivicIndicators.Grade(mAvgNow)</span>
+                            </div>
+                        </div>
+                        <div class="metrics-tier">"@CivicIndicators.TierLine(_metricSel, mv)"</div>
+
+                        @if (mh.Count >= 2)
+                        {
+                            var mW = 560.0; var mH = 210.0; var mPadX = 10.0; var mPadY = 16.0;
+                            var mChartW = mW - mPadX * 2; var mChartH = mH - mPadY * 2;
+                            var mCount = mh.Count;
+                            Func<int, double> mx = i => mPadX + (double)i / Math.Max(1, mCount - 1) * mChartW;
+                            Func<double, double> my = val => mPadY + (1.0 - val / 100.0) * mChartH;
+                            var mPts = string.Join(" ", mh.Select((sn, i) => $"{mx(i):F1},{my(sn.V[_metricSel]):F1}"));
+                            var mArea = $"M{mx(0):F1},{my(mh[0].V[_metricSel]):F1} " +
+                                        string.Join(" ", mh.Select((sn, i) => $"L{mx(i):F1},{my(sn.V[_metricSel]):F1}")) +
+                                        $" L{mx(mCount - 1):F1},{mH - mPadY:F1} L{mx(0):F1},{mH - mPadY:F1} Z";
+                            var mAvgPts = string.Join(" ", mh.Select((sn, i) => $"{mx(i):F1},{my(CivicIndicators.SimAvg(_metricSel, sn.Turn)):F1}"));
+                            var firstTurn = mh[0].Turn; var lastTurn = mh[^1].Turn;
+                            var lastX = mx(mCount - 1); var lastY = my(mh[^1].V[_metricSel]);
+                            <svg class="metrics-chart obs-chart" viewBox="0 0 560 210" preserveAspectRatio="none">
+                                <defs>
+                                    <linearGradient id="obsFill" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="rgba(74,216,255,0.28)" />
+                                        <stop offset="100%" stop-color="rgba(74,216,255,0)" />
+                                    </linearGradient>
+                                </defs>
+                                @for (var gy = 0; gy <= 4; gy++)
+                                {
+                                    <line x1="@mPadX" y1="@my(gy * 25)" x2="@(mW - mPadX)" y2="@my(gy * 25)"
+                                          stroke="rgba(120,190,255,0.08)" stroke-width="1" />
+                                }
+                                <path d="@mArea" fill="url(#obsFill)" />
+                                <polyline points="@mAvgPts" fill="none" stroke="rgba(160,150,190,0.5)"
+                                          stroke-width="1.5" stroke-dasharray="5 5" />
+                                <polyline points="@mPts" fill="none" stroke="#4ad8ff" stroke-width="2.2"
+                                          stroke-linejoin="round" stroke-linecap="round" />
+                                @if (CivicIndicators.DecisionDriven[_metricSel])
+                                {
+                                    foreach (var ev in State.ChoiceEvents.Where(e => e.Turn >= firstTurn && e.Turn <= lastTurn))
+                                    {
+                                        var evIdx = mh.FindIndex(sn => sn.Turn >= ev.Turn);
+                                        if (evIdx >= 0)
+                                        {
+                                            <circle cx="@mx(evIdx)" cy="@my(mh[evIdx].V[_metricSel])" r="4"
+                                                    fill="@(ev.FreedomWeight >= 0 ? "#d4a843" : "#ff5648")"
+                                                    stroke="#0a1624" stroke-width="1.5" />
+                                        }
+                                    }
+                                }
+                                <circle cx="@lastX.ToString("F1")" cy="@lastY.ToString("F1")" r="7" fill="rgba(74,216,255,0.18)" class="obs-pulse" />
+                                <circle cx="@lastX.ToString("F1")" cy="@lastY.ToString("F1")" r="3" fill="#4ad8ff" />
                             </svg>
-                            <span class="liberty-score-large">@f.Score</span>
-                        </div>
-                        <div class="liberty-grade">Liberty Index · @f.Title · Grade @f.Grade</div>
-                    </div>
+                            <div class="metrics-legend">
+                                <span><i class="lg-you"></i>@State.CityName</span>
+                                <span><i class="lg-them"></i>Other cities</span>
+                                @if (CivicIndicators.DecisionDriven[_metricSel])
+                                {
+                                    <span><i class="lg-dot"></i>Your decisions</span>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="metrics-empty">The archive opens next turn — the engine has begun recording.</div>
+                        }
 
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-value">@EconomyEngine.FormatNumber(State.Population)</div>
-                            <div class="stat-label">Citizens</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">$@EconomyEngine.FormatNumber(State.Gold)</div>
-                            <div class="stat-label">Treasury</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">@totalBuildings</div>
-                            <div class="stat-label">Buildings</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">@State.ChoiceEvents.Count</div>
-                            <div class="stat-label">Decisions</div>
+                        <div class="metrics-desc">@CivicIndicators.Descriptions[_metricSel]</div>
+                        <div class="metrics-infl-title">On the record</div>
+                        <div class="metrics-infl">
+                            @foreach (var inf in mInfl)
+                            {
+                                <div class="metrics-infl-row @(inf.Positive ? "pos" : "neg")">
+                                    <span class="infl-mark">@(inf.Positive ? "▲" : "▼")</span>
+                                    <span>@inf.Text</span>
+                                </div>
+                            }
                         </div>
                     </div>
 
@@ -757,8 +943,8 @@ else
                         var iSeenPath = BuildSmoothPath(idxSeen, iPadX, iChartW, iPadY, iChartH, iMin, iRange, idxSeen.Count);
                         var iGhostPath = idxGhost.Count >= 2 ? BuildSmoothPath(idxGhost, iPadX, iChartW, iPadY, iChartH, iMin, iRange, idxGhost.Count) : "";
 
-                        <div class="city-card">
-                            <div style="font-size:11px;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;font-weight:800;margin-bottom:10px;">Economic Index</div>
+                        <div class="city-section">
+                            <div class="section-title">Economic Index</div>
                             <svg viewBox="0 0 @iW @iH" style="width:100%;height:auto;display:block;">
                                 @if (!string.IsNullOrEmpty(iGhostPath))
                                 {
@@ -779,6 +965,20 @@ else
                             }
                         </div>
                     }
+                    <!--
+                    <button class="share-btn" @onclick="ShareCity">SHARE YOUR CITY</button>-->
+                    <div class="sfl-credit">A game by <span>Students For Liberty</span></div>
+                </div>
+            }
+            else if (_activeTab == Tab.Badges)
+            {
+                <!-- ═══ HONORS TAB: the badge collection ═══ -->
+                <div class="city-view">
+                    <div class="civic-header">
+                        <div class="civic-kicker">Hall of Records</div>
+                        <div class="civic-name">Honors</div>
+                        <div class="civic-era">Construction achievements of @State.CityName</div>
+                    </div>
 
                     <!-- Badge Collection -->
                     <div class="city-card">
@@ -821,28 +1021,6 @@ else
                             }
                         </div>
                     </div>
-
-                    @if (State.ChoiceEvents.Count > 0)
-                    {
-                        <div class="city-card">
-                            <div style="font-size:11px;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;font-family:'JetBrains Mono',monospace;">Your Decisions</div>
-                            @foreach (var ev in State.ChoiceEvents.Where(e => !string.IsNullOrWhiteSpace(e.Label)))
-                            {
-                                var evChoice = ev.ChoiceId != 0 ? Config.Choices.FirstOrDefault(x => x.Id == ev.ChoiceId) : null;
-                                <div class="decision-item" style="border-left-color:@(ev.FreedomWeight >= 0 ? "var(--gold-line)" : "rgba(255,86,72,0.5)");">
-                                    <div class="decision-turn">T@(ev.Turn)</div>
-                                    <div class="decision-label" style="flex:1;min-width:0;">@ev.Label</div>
-                                    @if (!string.IsNullOrWhiteSpace(evChoice?.LearnUrl))
-                                    {
-                                        <button class="learn-btn learn-btn-sm" @onclick="() => OpenLearnUrl(evChoice.LearnUrl)">⌕</button>
-                                    }
-                                </div>
-                            }
-                        </div>
-                    }
-
-                    <button class="share-btn" @onclick="ShareCity">SHARE YOUR CITY</button><!--
-                    <div class="sfl-credit">A game by <span>Students For Liberty</span></div>-->
                 </div>
             }
             else if (_activeTab == Tab.Settings)
@@ -852,13 +1030,13 @@ else
                     <div class="city-card">
                         <div class="settings-section-title">Audio</div>
                         <div class="settings-row">
-                            <div class="settings-label"><span>🎵</span><span>Music</span></div>
+                            <div class="settings-label">Music</div>
                             <input type="range" class="settings-slider" min="0" max="100" value="@((int)(_musicVolume * 100))"
                                    @oninput="OnMusicVolumeChange" />
                             <span class="settings-val">@((int)(_musicVolume * 100))%</span>
                         </div>
                         <div class="settings-row">
-                            <div class="settings-label"><span>🔊</span><span>SFX</span></div>
+                            <div class="settings-label">Sound effects</div>
                             <input type="range" class="settings-slider" min="0" max="100" value="@((int)(_sfxVolume * 100))"
                                    @oninput="OnSfxVolumeChange" />
                             <span class="settings-val">@((int)(_sfxVolume * 100))%</span>
@@ -866,22 +1044,53 @@ else
                     </div>
 
                     <div class="city-card">
-                        <div class="settings-section-title">About</div>
-                        <div style="color:var(--text-secondary)">
-                            <h2>UNDER CONSTRUCTION</h2>
-                            <p>v0.5 07/15/2026</p>
-                            <p>TODO: Add privacy policy + Notification settings + Add about SFL section</p>
+                        <div class="settings-section-title">Notifications</div>
+                        <div class="settings-row">
+                            <div class="settings-label">Issue reminders</div>
+                            <label class="switch">
+                                <input type="checkbox" checked="@_notifsEnabled" @onchange="OnNotifsToggle" />
+                                <span class="switch-track"><span class="switch-thumb"></span></span>
+                            </label>
                         </div>
-                        <div style="margin-top:12px;font-size:12px;color:var(--text-muted);">Version 1.0.0 · September 2026</div>
+                        <div class="settings-hint">A quiet notification when a new issue reaches your desk. Off means the simulation waits silently.</div>
+                    </div>
+
+                    <!--
+                    <div class="city-card">
+                        <div class="settings-section-title">About</div>
+                        <div style="font-size:13px;color:var(--text-secondary);line-height:1.75;">
+                            An economic strategy game by Students For Liberty. Build your city through seven eras — and live with the consequences of every decision.
+                        </div>
+                        <div class="beta-row" style="margin-top:12px;">
+                            <span class="beta-label">Version</span>
+                            <span class="beta-value">1.0 (beta)</span>
+                        </div>
+                    </div>-->
+
+                    <div class="city-card">
+                        <div class="settings-section-title">Settings</div>
+                        <!--
+                        <button class="settings-btn" @onclick="TestBadgeToast">Test badge toast</button>-->
+                        <button class="settings-btn" style="margin-top:8px;" @onclick="RefreshGameData">Check for updates</button>
+                        <!--
+                        <button class="settings-btn" style="margin-top:8px;" @onclick="() => _nextIssueUtc = DateTime.UtcNow">Skip issue timer</button>
+                        <button class="settings-btn" style="margin-top:8px;" @onclick="() => SaveService.Save(State, _eraStartUtc, _eraStartPop)">Save now</button>
+                        <button class="settings-btn" style="margin-top:8px;" @onclick="ReplayTutorial">Replay tutorial</button>
+                        <button class="settings-btn" style="margin-top:8px;" @onclick="CompleteEraIssues">Complete current era issues</button>-->
+                        <button class="settings-btn danger" style="margin-top:8px;" @onclick="ResetGame">Reset game — Delete city</button>
+                        <!--
+                        <div style="margin-top:10px;font-family:var(--font-mono);font-size:11px;color:var(--text-muted);line-height:1.7;">
+                            gate @GatedEraIdx · pop-era @Config.GetEraIndex(State.Population) · issues @EraIssuesDone/@EraIssuesTotal · anim @(State.EraUnlockAnimIndex?.ToString() ?? "—") · next-cer @(_lastCeremonyEra + 1)
+                        </div>-->
                     </div>
 
                     <div class="city-card">
-                        <div class="settings-section-title">Beta Tester (Internal)</div>
+                        <div class="settings-section-title">For beta-testers</div>
                         <div class="beta-row">
                             <span class="beta-label">User ID</span>
                             <span class="beta-value beta-guid">@UserId</span>
                         </div>
-                        <button class="choice-btn" style="margin:6px 0 10px;" @onclick="CopyUserId">@(_userIdCopied ? "✓ Copied" : "Copy User ID")</button>
+                        <button class="settings-btn" style="margin:6px 0 10px;" @onclick="CopyUserId">@(_userIdCopied ? "Copied" : "Copy User ID")</button>
                         <div class="beta-row">
                             <span class="beta-label">Time played (online)</span>
                             <span class="beta-value">@TimePlayedOnline</span>
@@ -893,7 +1102,7 @@ else
                         <div class="beta-row">
                             <span class="beta-label">Era reached</span>
                             <span class="beta-value">@CurrentEra.Name</span>
-                        </div>
+                        </div><!--
                         <div class="beta-row">
                             <span class="beta-label">Issue reached</span>
                             <span class="beta-value">@LastIssueReached()</span>
@@ -911,28 +1120,24 @@ else
                             <span class="beta-value" style="color:@(string.IsNullOrEmpty(SaveService.LastError) ? "var(--green)" : "var(--red)");">
                                 @(string.IsNullOrEmpty(SaveService.LastError) ? "ok" : SaveService.LastError)
                             </span>
-                        </div>
+                        </div>-->
                         <div class="beta-row">
                             <span class="beta-label">Last restore</span>
                             <span class="beta-value">@(_restoreNote == "" ? "—" : _restoreNote)</span>
                         </div>
                     </div>
 
-                    <div class="city-card">
-                        <div class="settings-section-title">Debug</div><!--
-                        <button class="choice-btn" @onclick="TestBadgeToast">Test badge toast</button>-->
-                        <button class="choice-btn" style="margin-top:8px;" @onclick="RefreshGameData">Check for updates</button>
-                        <button class="choice-btn" style="margin-top:8px;" @onclick="() => _nextIssueUtc = DateTime.UtcNow">Skip issue timer</button>
-                        <button class="choice-btn" style="margin-top:8px;" @onclick="() => SaveService.Save(State, _eraStartUtc, _eraStartPop)">Save now</button>
-                        <button class="choice-btn" style="margin-top:8px;" @onclick="ReplayTutorial">Replay tutorial</button><!--
-                        <button class="choice-btn" style="margin-top:8px;" @onclick="CompleteEraIssues">Complete current era issues</button>-->
-                        <button class="choice-btn" style="margin-top:8px;border-color:rgba(255,86,72,0.4);" @onclick="ResetGame">Reset game (erases save, quits app)</button>
-                        <div style="margin-top:8px;font-size:8px;color:var(--text-muted);line-height:1.7;">
-                            gate @GatedEraIdx · pop-era @Config.GetEraIndex(State.Population) · issues @EraIssuesDone/@EraIssuesTotal · anim @(State.EraUnlockAnimIndex?.ToString() ?? "—") · next-cer @(_lastCeremonyEra + 1)
-                        </div>
+                </div>
+            }
+
+            @if (_refreshing)
+            {
+                <div class="load-screen load-overlay">
+                    <div class="load-core">
+                        <div class="load-mark">Age of Liberty</div>
+                        <div class="load-bar"><div class="load-bar-fill"></div></div>
+                        <div class="boot-status">Downloading simulation data</div>
                     </div>
-                    <!--
-                    <div class="sfl-credit">Made with ❤️ by <span>Students For Liberty</span></div>-->
                 </div>
             }
 
@@ -951,7 +1156,8 @@ else
                     }
                     else
                     {
-                        <div class="issue-chip-label">Era complete</div>
+                        
+                        <div class="issue-chip-label">More citizens needed to advance</div>
                     }
                 </div>
             }
@@ -996,7 +1202,8 @@ else
                     @if (_fabOpen)
                     {
                         <button class="fab-item fab-item-1" @onclick="() => SelectFabTab(Tab.City)">🏛️<span class="fab-item-label">City</span></button>
-                        <button class="fab-item fab-item-2" @onclick="() => SelectFabTab(Tab.Settings)">⚙️<span class="fab-item-label">Settings</span></button>
+                        <button class="fab-item fab-item-2" @onclick="() => SelectFabTab(Tab.Badges)">🎖️<span class="fab-item-label">Honors</span></button>
+                        <button class="fab-item fab-item-3" @onclick="() => SelectFabTab(Tab.Settings)">⚙️<span class="fab-item-label">Settings</span></button>
                     }
                     <button class="fab-core @(_fabOpen ? "open" : "")" @onclick="ToggleFab">
                         <span class="fab-core-icon">@(_activeTab == Tab.Map ? "⬡" : "🗺️")</span>
@@ -1009,8 +1216,8 @@ else
 }
 
 @code {
-    private enum Tab { Map, City, Settings }
-    private enum EraRevealPhase { None, Announcement, ChestReveal }
+    private enum Tab { Map, City, Badges, Settings }
+    private enum EraRevealPhase { None, Announcement, Address, ChestReveal }
 
     private bool _loaded;
     private string? _loadError;
@@ -1113,13 +1320,13 @@ else
     {
         "Hello, observer. I've been waiting for you.",
         "I am the engine. I was built for a single purpose: to run experiments in history.",
-        "To understand, why civilizations flourish, and why they fail.",
+        "To understand, at last, why civilizations flourish — and why they fail.",
         "I have watched many of them rise and fall.",
-        "Cities that bloomed from one market square. Empires with perfect plans that starved.",
+        "Cities that bloomed from one market square, and Empires that starved with full granaries and perfect plans.",
         "If those timelines taught me anything, it's this: good intentions are easy. Consequences are stubborn.",
-        "Every choice writes two futures: the one you will see, and the one it quietly erases.",
-        "The seen, and the unseen. Most dreams die there. Not from malice, but from looking at only half the picture.",
-        "And there is always a trade. Stillness feels safe, but it is a slow way to die. Motion is messy, uncertain, and the only thing that has ever built a future.",
+        "Every choice writes two futures — the one you will see, and the one it quietly erases.",
+        "The seen, and the unseen. Most dreams die there. Not from malice — from looking at only half the picture.",
+        "And there is always a trade. Stillness feels safe — but it is a slow way to die. Motion is messy, uncertain, and the only thing that has ever built a future.",
         "I won't take sides. I'll simply show you what follows. What works, we'll see together. What doesn't — we'll see that too.",
         "So. Let's run one more experiment. Yours."
     };
@@ -1259,14 +1466,14 @@ else
         try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.flareGold"); } catch { }
         try { await JS.InvokeVoidAsync("AgeOfLibertyAudio.sfxEraUnlock"); } catch { }
         await Task.Delay(200);
-        var l1 = $"{State.CityName}. Starting simulation.";
+        var l1 = $"{State.CityName}. Launching simulation.";
         try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.typeText", "introLine", l1); } catch { }
         await Task.Delay(l1.Length * 26 + 1700);
         var l2 = "Let's see what you build.";
         try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.typeText", "introLine", l2); } catch { }
         await Task.Delay(l2.Length * 26 + 1500);
         _introFading = true;
-        try { await JS.InvokeVoidAsync("AgeOfLibertyAudio.stopIntroMusic", 900); } catch { }   // new line
+        try { await JS.InvokeVoidAsync("AgeOfLibertyAudio.stopIntroMusic", 900); } catch { }
         StateHasChanged();
         await Task.Delay(950);
         try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.destroy"); } catch { }
@@ -1286,8 +1493,12 @@ else
         try { await JS.InvokeVoidAsync("AgeOfLibertyBadges.test"); } catch { }
     }
 
+    private bool _refreshing;
+
     private async Task RefreshGameData()
     {
+        _refreshing = true;
+        StateHasChanged();
         try
         {
             await Directus.ClearCacheAsync();
@@ -1300,8 +1511,11 @@ else
             }
         }
         catch { }
+        finally { _refreshing = false; StateHasChanged(); }
     }
     private EraRevealPhase _eraRevealPhase = EraRevealPhase.None;
+    private string[] _addressBeats = Array.Empty<string>();
+    private int _addressBeatIdx;
     private int _eraRevealEraIdx = -1;
 
     private bool _particlesInitialized;
@@ -1424,7 +1638,7 @@ else
     private record TutStep(string Text, bool Top, bool WaitDrawer);
     private static readonly TutStep[] TutSteps = new[]
     {
-        new TutStep("Welcome to the simulation chamber. Every hexagon is a piece of your economy.", false, false),
+        new TutStep("This is the simulation chamber. Every hexagon is a piece of your economy.", false, false),
         new TutStep("Each one carries a live price. Watch closely, they're never still. That flicker is the market breathing.", false, false),
         new TutStep("Tap any resource to inspect it.", true, true),
         new TutStep("Its price history, what it's made from, and the BUILD command. Build things, and watch your city grow.", true, false),
@@ -1672,8 +1886,11 @@ else
         State.NotifyStateChanged();
     }
 
+    private int _spokenScenarioId;
+
     private void DismissIssue()
     {
+        _spokenScenarioId = 0;   // reopening replays the entrance
         State.ActiveScenario = null;
         State.Phase = GamePhase.Play;
         Economy.Start();             // resume — MakeChoice won't run for a dismissal
@@ -1705,7 +1922,7 @@ else
 
     // ─── Era Bands (top = oldest) ────────────────────────────────────────
     private const int BandW = 660;
-    private const int BandH = 560;
+    private const int BandH = 400;
     private int VisibleBands => Math.Min(Config.Eras.Count, GatedEraIdx + 1);
     private const int BandTail = 140;
     private int MapH => VisibleBands * BandH + BandTail;
@@ -1875,8 +2092,21 @@ else
     private List<Atom> AvailableAtoms => Config.GetAvailableAtoms(GatedEraIdx);
     private Atom? SelectedAtom => State.SelectedAtomId.HasValue && Config.AtomsById.TryGetValue(State.SelectedAtomId.Value, out var a) ? a : null;
 
+    private bool _notifsEnabled = true;
+    private void OnNotifsToggle(ChangeEventArgs e)
+    {
+        _notifsEnabled = e.Value is bool b && b;
+        try
+        {
+            NotificationHelper.Enabled = _notifsEnabled;
+            if (_notifsEnabled) NotificationHelper.RequestPermission();
+        }
+        catch { }
+    }
+
     protected override async Task OnInitializedAsync()
     {
+        try { _notifsEnabled = NotificationHelper.Enabled; } catch { }
         Scenarios.Economy = Economy;
         try
         {
@@ -1914,6 +2144,21 @@ else
         {
             _introStarted = true;
             _ = RunIntroBoot();
+        }
+
+        // Character entrance: typewrite the line + play the voice sting, once per opening
+        if (State.ActiveScenario is Scenario spk && spk.Id != _spokenScenarioId)
+        {
+            _spokenScenarioId = spk.Id;
+            var spkChar = Config.CharsById.GetValueOrDefault(spk.CharacterId);
+            if (!string.IsNullOrWhiteSpace(spk.CharacterLine))
+            {
+                try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.typeText", "charLine", spk.CharacterLine.Replace("{cityName}", State.CityName)); } catch { }
+            }
+            if (!string.IsNullOrWhiteSpace(spkChar?.VoiceAsset))
+            {
+                try { await JS.InvokeVoidAsync("AoLVoice.play", $"assets/characters/{spkChar.VoiceAsset}"); } catch { }
+            }
         }
 
         if (_tutorialActive)
@@ -2073,7 +2318,25 @@ else
     private void OnStateChanged()
     {
         _saveDirty = true;
+        try { CivicIndicators.RecordIfNewTurn(State, Config, Economy.GetIncomeRate()); } catch { }
         InvokeAsync(StateHasChanged);
+    }
+
+    // ─── Observatory (city page metric explorer) ─────────────────────────
+    private int _metricSel = CivicIndicators.CivicMood;
+    private void SelectMetric(int mi) { _metricSel = Math.Clamp(mi, 0, CivicIndicators.Count - 1); StateHasChanged(); }
+
+    /// <summary>Polygon points for the civic fingerprint radar.</summary>
+    private static string RadarPoints(int axes, double cx, double cy, double r, Func<int, double> valueAt)
+    {
+        var pts = new System.Text.StringBuilder();
+        for (var i = 0; i < axes; i++)
+        {
+            var ang = -Math.PI / 2 + i * 2 * Math.PI / axes;
+            var rr = r * Math.Clamp(valueAt(i), 0, 100) / 100.0;
+            pts.Append($"{cx + rr * Math.Cos(ang):F1},{cy + rr * Math.Sin(ang):F1} ");
+        }
+        return pts.ToString().TrimEnd();
     }
 
     private void SetTab(Tab tab)
@@ -2174,10 +2437,73 @@ else
         {
             await ChestTap();
         }
+        else if (_eraRevealPhase == EraRevealPhase.Address)
+        {
+            await AddressTap();
+        }
         else
         {
-            await TransitionToChest();
+            await BeginEraAddress();
         }
+    }
+
+    /// <summary>Announcement tapped: play the engine's era address if this era
+    /// has one (all except the first), otherwise go straight to the chest.
+    /// Same visual stage — the badge keeps rotating behind the words.</summary>
+    private async Task BeginEraAddress()
+    {
+        var idx = State.EraUnlockAnimIndex;
+        var era = (idx is int i && i >= 0 && i < Config.Eras.Count) ? Config.Eras[i] : null;
+        var beats = (era?.EraAddress ?? string.Empty).Replace("\r", "")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (idx is not int || idx == 0 || beats.Length == 0)
+        {
+            await TransitionToChest();
+            return;
+        }
+        _addressBeats = beats;
+        _addressBeatIdx = 0;
+        _eraRevealPhase = EraRevealPhase.Address;
+        State.NotifyStateChanged();
+        await Task.Delay(80);
+        try { await JS.InvokeVoidAsync("AgeOfLibertyEra.addressMode"); } catch { }
+        try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.typeText", "eraAddressLine", _addressBeats[0]); } catch { }
+    }
+
+    /// <summary>Address tapped: finish the current beat instantly, or advance
+    /// to the next beat, or hand over to the chest ceremony.</summary>
+    private async Task AddressTap()
+    {
+        bool wasTyping = false;
+        try { wasTyping = await JS.InvokeAsync<bool>("AgeOfLibertyIntro.finishType"); } catch { }
+        if (wasTyping) return;
+        _addressBeatIdx++;
+        if (_addressBeatIdx >= _addressBeats.Length)
+        {
+            await TransitionToChest();
+            return;
+        }
+        StateHasChanged();
+        try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.typeText", "eraAddressLine", _addressBeats[_addressBeatIdx]); } catch { }
+    }
+
+    /// <summary>Skip the entire ceremony from the address screen: address,
+    /// chest reveal, everything. Mirrors DismissChest's cleanup so the new
+    /// era starts cleanly.</summary>
+    private async Task SkipCeremony()
+    {
+        try { await JS.InvokeVoidAsync("AgeOfLibertyEra.fadeOut", 0.35); } catch { }
+        await Task.Delay(400);
+        if (State.EraUnlockAnimIndex is int skipIdx) _lastCeremonyEra = Math.Max(_lastCeremonyEra, skipIdx);
+        State.EraUnlockAnimIndex = null;
+        _lastEraUnlockIdx = null;
+        _eraRevealPhase = EraRevealPhase.None;
+        _eraRevealEraIdx = -1;
+        _eraStartUtc = DateTime.UtcNow;
+        _eraStartPop = State.Population;
+        Economy.Start();
+        try { _ = JS.InvokeVoidAsync("AgeOfLibertyJuice.setActive", _activeTab == Tab.Map); } catch { }
+        State.NotifyStateChanged();
     }
 
     private async Task TransitionToChest()
@@ -2280,15 +2606,7 @@ else
     {
         _buildMenuOpen = false;
         if (!Config.AtomsById.TryGetValue(atomId, out var atom)) { StateHasChanged(); return; }
-        int built = 0;
-        long spent = 0;
-        for (int i = 0; i < count; i++)
-        {
-            var unitCost = State.GetBuildCost(atom, Config);
-            if (!Economy.TryBuild(atomId)) break;
-            built++;
-            spent += unitCost;
-        }
+        var (built, spent) = Economy.TryBuildBulk(atomId, count);
         if (built > 0)
         {
             try
@@ -2296,7 +2614,7 @@ else
                 await JS.InvokeVoidAsync("AgeOfLibertyAudio.sfxBuild");
                 await JS.InvokeVoidAsync("AgeOfLibertyJuice.buildCelebrationAt",
                     "atomSvg", atom.PositionX, RY(atom), atom.PopGain * built, spent);
-                await JS.InvokeVoidAsync("AgeOfLibertyJuice.floatText",
+                await JS.InvokeVoidAsync("AgeOfLibertyJuice.floatTextAt",
                     "atomSvg", atom.PositionX, RY(atom) - 46, $"×{built} built", "#f0c860");
                 await JS.InvokeVoidAsync("AgeOfLibertyJuice.hudBump", "hudGold");
             }

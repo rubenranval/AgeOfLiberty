@@ -72,6 +72,9 @@ public class Era
 
     [JsonPropertyName("sort_order")]
     public int SortOrder { get; set; }
+    [JsonPropertyName("era_address")]
+    public string? EraAddress { get; set; }        // "era_address"
+
 }
 
 // Atom
@@ -81,11 +84,16 @@ public class Atom
     [JsonPropertyName("id")]
     public int Id { get; set; }
 
+    [JsonPropertyName("slug")]
+    public string Slug { get; set; } = "";
+
     [JsonPropertyName("name")]
     public string Name { get; set; } = "";
 
     [JsonPropertyName("icon")]
     public string Icon { get; set; } = "";
+    [JsonPropertyName("sprite_asset")]
+    public string SpriteAsset { get; set; } = "";
 
     [JsonPropertyName("era_id")]
     public int EraId { get; set; }
@@ -107,6 +115,9 @@ public class Atom
 
     [JsonPropertyName("housing_weight")]
     public double HousingWeight { get; set; }
+    [JsonPropertyName("income_bonus")]
+    public long IncomeBonus { get; set; }          // "income_bonus"
+
 }
 
 // Dépendances entre différents atomes
@@ -147,6 +158,10 @@ public class Character
 
     [JsonPropertyName("intro_dialogue")]
     public string? IntroDialogue { get; set; }
+    [JsonPropertyName("portrait_asset")]
+    public string? PortraitAsset { get; set; }     // "portrait_asset"
+    [JsonPropertyName("voice_asset")]
+    public string? VoiceAsset { get; set; }
 }
 
 // Scenario
@@ -170,9 +185,13 @@ public class Scenario
 
     [JsonPropertyName("text")]
     public string Text { get; set; } = "";
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = "";
 
     [JsonPropertyName("sort_order")]
     public int SortOrder { get; set; }
+    [JsonPropertyName("character_line")]
+    public string? CharacterLine { get; set; }     // "character_line"
 }
 
 // Choices

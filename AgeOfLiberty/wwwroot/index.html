@@ -3,15 +3,22 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>Liberty City</title>
+    <title>Age Of Liberty</title>
     <base href="/" />
     <link href="app.css" rel="stylesheet" />
 </head>
 <body>
-    <div id="app">Loading...</div>
+    <div id="app">
+        <div class="load-screen">
+            <div class="load-core">
+                <div class="load-mark">Age of Liberty</div>
+                <div class="load-bar"><div class="load-bar-fill"></div></div>
+            </div>
+        </div>
+    </div>
     <script src="_framework/blazor.webview.js" autostart="false"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="lib/three.min.js"></script>
+    <script src="lib/gltfloader.js"></script>
     <script src="animations2.js"></script>
     <script src="ambient.js"></script>
     <script src="juice.js"></script>

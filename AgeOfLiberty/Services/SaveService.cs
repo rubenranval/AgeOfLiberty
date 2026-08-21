@@ -26,6 +26,7 @@ public class SaveGame
     public List<ChoiceEvent> ChoiceEvents { get; set; } = new();
     public List<DelayedEffect> DelayedEffects { get; set; } = new();
     public List<string> ScenariosDone { get; set; } = new();
+    public List<IndicatorSnapshot> IndicatorHistory { get; set; } = new();
     // Session baselines for the era stat cards
     public DateTime EraStartUtc { get; set; }
     public int EraStartPop { get; set; }
@@ -61,6 +62,7 @@ public static class SaveService
                 PopHistory = state.PopHistory.ToList(),
                 ChoiceEvents = state.ChoiceEvents.ToList(),
                 DelayedEffects = state.DelayedEffects.ToList(),
+                IndicatorHistory = state.IndicatorHistory.ToList(),
                 ScenariosDone = state.ScenariosDone.ToList(),
                 EraStartUtc = eraStartUtc,
                 EraStartPop = eraStartPop,
@@ -129,6 +131,8 @@ public static class SaveService
         state.ChoiceEvents.AddRange(s.ChoiceEvents);
         state.DelayedEffects.Clear();
         state.DelayedEffects.AddRange(s.DelayedEffects);
+        state.IndicatorHistory.Clear();
+        state.IndicatorHistory.AddRange(s.IndicatorHistory ?? new List<IndicatorSnapshot>());
         state.ScenariosDone.Clear();
         foreach (var slug in s.ScenariosDone) state.ScenariosDone.Add(slug);
     }

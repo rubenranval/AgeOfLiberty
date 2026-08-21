@@ -1,5 +1,6 @@
-﻿using Microsoft.Extensions.Logging;
-using AgeOfLiberty.Services;
+﻿using AgeOfLiberty.Services;
+using Microsoft.Extensions.Logging;
+using System.Globalization;
 
 namespace AgeOfLiberty;
 
@@ -7,6 +8,11 @@ public static class MauiProgram
 {
     public static MauiApp CreateMauiApp()
     {
+
+        // SVG/JS interop requires invariant numeric formatting ("12.5", never "12,5")
+        CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
+
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()
@@ -35,6 +41,8 @@ public static class MauiProgram
         handler.PlatformView.Configuration.AllowsInlineMediaPlayback = true;
         handler.PlatformView.Configuration.MediaTypesRequiringUserActionForPlayback =
             WebKit.WKAudiovisualMediaTypes.None;
+        handler.PlatformView.ScrollView.ContentInsetAdjustmentBehavior =
+            UIKit.UIScrollViewContentInsetAdjustmentBehavior.Never;
 #endif
     });
 

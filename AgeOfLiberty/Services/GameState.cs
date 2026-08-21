@@ -38,6 +38,9 @@ public class GameState
     public List<PriceSnapshot> PriceHistory { get; set; } = new();
     public List<PopSnapshot> PopHistory { get; set; } = new();
     public List<ChoiceEvent> ChoiceEvents { get; set; } = new();
+    /// <summary>Per-turn snapshot of the 13 civic indicators (normalized 0–100).
+    /// Appended by CivicIndicators.RecordIfNewTurn; capped at 600 like PriceHistory.</summary>
+    public List<IndicatorSnapshot> IndicatorHistory { get; set; } = new();
     public List<string> Log { get; set; } = new() { "Welcome to Liberty City." };
 
     // UI State

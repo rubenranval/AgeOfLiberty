@@ -204,6 +204,37 @@ window.AgeOfLibertyEra = {
         this._startLoop();
     },
 
+    // ─── PHASE 1.5: ADDRESS MODE ─────────────────────────────────────────
+    // The engine speaks: badge sheds its gold skin for the intro's cyan
+    // wireframe ghost, and the particle field thickens. Called when the
+    // era address screen appears; the chest transition fades it all out.
+    addressMode: function () {
+        if (!this._scene) return;
+        var self = this;
+
+        // Badge → intro-style dual skin: faint solid ghost + cyan wireframe
+        if (this._badgeGroup) {
+            var wires = [];
+            this._badgeGroup.traverse(function (node) {
+                if (node.isMesh && !node.userData.aolWire) {
+                    node.material = new THREE.MeshBasicMaterial({
+                        color: 0xffffff, transparent: true, opacity: 0.07
+                    });
+                    var wire = new THREE.Mesh(node.geometry, new THREE.MeshBasicMaterial({
+                        color: 0x4ad8ff, wireframe: true, transparent: true, opacity: 0.85
+                    }));
+                    wire.userData.aolWire = true;
+                    wires.push({ parent: node, mesh: wire });
+                }
+            });
+            for (var w = 0; w < wires.length; w++) wires[w].parent.add(wires[w].mesh);
+        }
+
+        // Thicken the field: two extra slow orbit shells, wide and ambient
+        this._spawnOrbitParticles(30, 2.3, 1.8, 0.22);
+        this._spawnOrbitParticles(18, 3.1, 2.4, 0.14);
+    },
+
     // ─── PHASE 2: TRANSITION TO CHEST ────────────────────────────────────
     transitionToChest: function (dotnetRef) {
         this._dotnetRef = dotnetRef;

@@ -4,6 +4,21 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 window.AgeOfLibertyJuice = {
+    // ─── PARTICLE BUDGET ─────────────────────────────────────────────────
+    // Hard cap on simultaneously-alive FX elements. Bulk purchases and
+    // cascade storms used to spawn unbounded DOM particles and melt
+    // low-end phones; now spawns beyond the budget are silently dropped.
+    _liveFx: 0,
+    _FX_MAX: 90,
+    _fxTake: function (n) {
+        var room = this._FX_MAX - this._liveFx;
+        if (room <= 0) return 0;
+        var take = Math.min(n, room);
+        this._liveFx += take;
+        return take;
+    },
+    _fxDone: function (n) { this._liveFx = Math.max(0, this._liveFx - n); },
+
 
     // Map-only: effects are muted on other tabs and during ceremonies
     _active: true,
@@ -43,6 +58,10 @@ window.AgeOfLibertyJuice = {
         var container = document.getElementById(parentId);
         if (!container) container = document.body;
         count = count || 12;
+        count = this._fxTake(count);
+        if (count === 0) return;
+        var _pbSelf = this;
+        setTimeout(function () { _pbSelf._fxDone(count); }, 1100); // max particle life ~900ms
         color = color || '#f0c860';
 
         for (var i = 0; i < count; i++) {
@@ -250,6 +269,9 @@ window.AgeOfLibertyJuice = {
 
     // ─── COIN DRIFT ──────────────────────────────────────────────────────
     coinDrift: function (startX, startY, targetId) {
+        if (this._fxTake(1) === 0) return;
+        var _cdSelf = this;
+        setTimeout(function () { _cdSelf._fxDone(1); }, 1300);
         if (!window.AgeOfLibertyJuice._active) return;
         var target = document.getElementById(targetId);
         var endX, endY;
@@ -390,6 +412,14 @@ window.AgeOfLibertyJuice = {
         if (!window.AgeOfLibertyJuice._active) return;
         var p = this.svgToScreen(svgId, svgX, svgY);
         this.ringPulse(p.x, p.y, 'rgba(74,216,255,0.5)', null);
+    },
+
+    // Screen-space floatText from SVG coordinates, matching the *At convention
+    // used by nodeTapAt / buildCelebrationAt (svgId first, then svg x/y).
+    floatTextAt: function (svgId, svgX, svgY, text, color) {
+        if (!window.AgeOfLibertyJuice._active) return;
+        var p = this.svgToScreen(svgId, svgX, svgY);
+        this.floatText(text, p.x, p.y, color, null);
     },
 
     buildCelebrationAt: function (svgId, svgX, svgY, popGain, cost) {

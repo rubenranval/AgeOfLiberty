@@ -59,13 +59,11 @@ public class EconomyEngine : IDisposable
         if (_state.Phase != GamePhase.Play || _state.ActiveScenario != null) return;
 
         var cfg = _config.Config;
-        var marketCount = _state.GetBuiltCount(_config.Atoms.FirstOrDefault(a => a.Name == "Market")?.Id ?? -1);
-        var farmCount = _state.GetBuiltCount(_config.Atoms.FirstOrDefault(a => a.Name == "Farm")?.Id ?? -1);
+        var atomIncome = AtomIncome();
 
         var incomePerTick = (cfg.BaseIncome
             + Math.Floor(_state.Population * cfg.PopIncomeMultiplier)
-            + marketCount * cfg.MarketIncomeBonus
-            + farmCount * cfg.FarmIncomeBonus) * 0.15;
+            + atomIncome) * 0.15;
 
         _state.Gold += Math.Max(1, (long)Math.Round(incomePerTick));
         _state.NotifyStateChanged();
@@ -181,6 +179,37 @@ public class EconomyEngine : IDisposable
         return true;
     }
 
+    /// <summary>Bulk build: N units, ONE state notification, ONE log line.
+    /// The per-unit path fires a full UI re-render each call — buying 500
+    /// water mills that way melts low-end phones. This does the same
+    /// arithmetic in a tight loop and tells the UI once at the end.</summary>
+    public (int built, long spent) TryBuildBulk(int atomId, int count)
+    {
+        if (!_config.AtomsById.TryGetValue(atomId, out var atom)) return (0, 0);
+        int built = 0;
+        long spent = 0;
+        bool popChanged = false;
+        for (int i = 0; i < count; i++)
+        {
+            var cost = _state.GetBuildCost(atom, _config);
+            if (_state.Gold < cost) break;
+            _state.Gold -= cost;
+            _state.Built[atomId] = _state.GetBuiltCount(atomId) + 1;
+            built++;
+            spent += cost;
+            if (atom.PopGain > 0) { _state.Population += atom.PopGain; popChanged = true; }
+        }
+        if (built > 0)
+        {
+            if (popChanged) CheckEraUnlock();
+            _state.AddLog($"Built {atom.Icon} {atom.Name} ×{built} for ${FormatNumber(spent)}");
+            _state.SelectedAtomId = null;
+            _state.DrawerOpen = false;
+            _state.NotifyStateChanged();
+        }
+        return (built, spent);
+    }
+
     // ── Cascade: shocks travel the dependency graph ─────────────────────────
     //
     // A choice shocks its target atoms directly. Then the shock PROPAGATES:
@@ -206,10 +235,9 @@ public class EconomyEngine : IDisposable
 
         for (int hop = 0; hop <= CascadeMaxHops && wave.Count > 0; hop++)
         {
-            foreach (var (atomId, mult) in wave)
-            {
-                ScheduleShock(atomId, mult, hop * CascadeHopDelayMs, hop == 0 ? 2500 : 1400);
-            }
+            // One scheduled task per HOP, not per atom: a 10-atom wave used to
+            // trigger ~20 full UI re-renders; now the whole cascade costs ≤6.
+            ScheduleHop(new Dictionary<int, double>(wave), hop * CascadeHopDelayMs, hop == 0 ? 2500 : 1400);
 
             // Build the next wave: dependents of everything in this wave
             var next = new Dictionary<int, double>();
@@ -231,18 +259,21 @@ public class EconomyEngine : IDisposable
         }
     }
 
-    private void ScheduleShock(int atomId, double mult, int delayMs, int visualMs)
+    private void ScheduleHop(Dictionary<int, double> hopWave, int delayMs, int visualMs)
     {
         Task.Delay(delayMs).ContinueWith(_ =>
         {
-            _state.Cascading[atomId] = true;
-            var old = _state.PriceMultipliers.GetValueOrDefault(atomId, 1.0);
-            _state.PriceMultipliers[atomId] = Math.Round(old * mult * 100) / 100;
+            foreach (var (atomId, mult) in hopWave)
+            {
+                _state.Cascading[atomId] = true;
+                var old = _state.PriceMultipliers.GetValueOrDefault(atomId, 1.0);
+                _state.PriceMultipliers[atomId] = Math.Round(old * mult * 100) / 100;
+            }
             _state.NotifyStateChanged();
 
-            Task.Delay(2500).ContinueWith(_ =>
+            Task.Delay(visualMs).ContinueWith(_ =>
             {
-                _state.Cascading[atomId] = false;
+                foreach (var atomId in hopWave.Keys) _state.Cascading[atomId] = false;
                 _state.NotifyStateChanged();
             });
         });
@@ -295,8 +326,21 @@ public class EconomyEngine : IDisposable
     public int GetIncomeRate()
     {
         var cfg = _config.Config;
-        var marketCount = _state.GetBuiltCount(_config.Atoms.FirstOrDefault(a => a.Name == "Market")?.Id ?? -1);
-        var farmCount = _state.GetBuiltCount(_config.Atoms.FirstOrDefault(a => a.Name == "Farm")?.Id ?? -1);
-        return (int)(cfg.BaseIncome + Math.Floor(_state.Population * cfg.PopIncomeMultiplier) + marketCount * cfg.MarketIncomeBonus + farmCount * cfg.FarmIncomeBonus);
+        return (int)(cfg.BaseIncome + Math.Floor(_state.Population * cfg.PopIncomeMultiplier) + AtomIncome());
+    }
+
+    /// <summary>v2: income comes from atoms' IncomeBonus (commerce lineage:
+    /// Water Mill → Telegraph → Radio → Internet → Quantum → Space Datacenter).
+    /// Replaces the old hardcoded Market/Farm lookup.</summary>
+    private long AtomIncome()
+    {
+        long total = 0;
+        foreach (var a in _config.Atoms)
+        {
+            if (a.IncomeBonus <= 0) continue;
+            var built = _state.GetBuiltCount(a.Id);
+            if (built > 0) total += (long)built * a.IncomeBonus;
+        }
+        return total;
     }
 }
