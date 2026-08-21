@@ -815,9 +815,7 @@ else
                                 var ax2 = rcx + rR * Math.Cos(aAng); var ay2 = rcy + rR * Math.Sin(aAng);
                                 var lx = rcx + (rR + 15) * Math.Cos(aAng); var ly = rcy + (rR + 15) * Math.Sin(aAng) + 3;
                                 <line x1="@rcx" y1="@rcy" x2="@ax2.ToString("F1")" y2="@ay2.ToString("F1")" stroke="rgba(120,190,255,0.08)" stroke-width="1" />
-                                <g @onclick="() => SelectMetric(cax)">
-                                    @((MarkupString)$"<text x=\"{lx:F1}\" y=\"{ly:F1}\" text-anchor=\"middle\" class=\"radar-lbl {(cax == _metricSel ? "on" : "")}\">{rLbl[cax]}</text>")
-                                </g>
+                                @((MarkupString)$"<text x=\"{lx:F1}\" y=\"{ly:F1}\" text-anchor=\"middle\" class=\"radar-lbl {(cax == _metricSel ? "on" : "")}\">{rLbl[cax]}</text>")
                             }
                             <polygon points="@themPoly" fill="rgba(160,150,190,0.06)" stroke="rgba(160,150,190,0.55)"
                                      stroke-width="1.4" stroke-dasharray="5 4" />
@@ -1086,11 +1084,12 @@ else
 
                     <div class="city-card">
                         <div class="settings-section-title">For beta-testers</div>
+                        <!--
                         <div class="beta-row">
                             <span class="beta-label">User ID</span>
                             <span class="beta-value beta-guid">@UserId</span>
                         </div>
-                        <button class="settings-btn" style="margin:6px 0 10px;" @onclick="CopyUserId">@(_userIdCopied ? "Copied" : "Copy User ID")</button>
+                        <button class="settings-btn" style="margin:6px 0 10px;" @onclick="CopyUserId">@(_userIdCopied ? "Copied" : "Copy User ID")</button>-->
                         <div class="beta-row">
                             <span class="beta-label">Time played (online)</span>
                             <span class="beta-value">@TimePlayedOnline</span>

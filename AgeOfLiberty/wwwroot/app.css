@@ -3381,3 +3381,13 @@ body, html {
     line-height: 1.55;
     color: var(--text-muted);
 }
+
+
+/* ═══════════════════════════════════════════════════════════════
+   SAFE AREA — the HUD is an absolute overlay on the map page only.
+   The scrolling tabs (city, honors, settings) have no HUD above
+   them, so they need their own notch padding on iOS.
+   ═══════════════════════════════════════════════════════════════ */
+.city-view, .settings-view {
+    padding-top: calc(var(--sat) + 14px);
+}
