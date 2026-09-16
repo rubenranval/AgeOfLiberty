@@ -11,7 +11,7 @@ namespace AgeOfLiberty.Services;
 /// </summary>
 public class SaveGame
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
     public DateTime SavedAtUtc { get; set; }
     public string CityName { get; set; } = "";
     public long Gold { get; set; }
@@ -24,6 +24,7 @@ public class SaveGame
     public List<PriceSnapshot> PriceHistory { get; set; } = new();
     public List<PopSnapshot> PopHistory { get; set; } = new();
     public List<ChoiceEvent> ChoiceEvents { get; set; } = new();
+    public List<GameDispatch> Dispatches { get; set; } = new();
     public List<DelayedEffect> DelayedEffects { get; set; } = new();
     public List<string> ScenariosDone { get; set; } = new();
     public List<IndicatorSnapshot> IndicatorHistory { get; set; } = new();
@@ -34,7 +35,7 @@ public class SaveGame
 
 public static class SaveService
 {
-    private const int CurrentSchema = 1;
+    private const int CurrentSchema = 2;
     private static string SavePath => Path.Combine(FileSystem.AppDataDirectory, "aol_save.json");
     private static string TmpPath => SavePath + ".tmp";
 
@@ -61,6 +62,7 @@ public static class SaveService
                 PriceHistory = state.PriceHistory.ToList(),
                 PopHistory = state.PopHistory.ToList(),
                 ChoiceEvents = state.ChoiceEvents.ToList(),
+                Dispatches = state.Dispatches.ToList(),
                 DelayedEffects = state.DelayedEffects.ToList(),
                 IndicatorHistory = state.IndicatorHistory.ToList(),
                 ScenariosDone = state.ScenariosDone.ToList(),
@@ -128,9 +130,11 @@ public static class SaveService
         state.PopHistory.Clear();
         state.PopHistory.AddRange(s.PopHistory);
         state.ChoiceEvents.Clear();
-        state.ChoiceEvents.AddRange(s.ChoiceEvents);
+        state.ChoiceEvents.AddRange(s.ChoiceEvents ?? new List<ChoiceEvent>());
+        state.Dispatches.Clear();
+        state.Dispatches.AddRange(s.Dispatches ?? new List<GameDispatch>());
         state.DelayedEffects.Clear();
-        state.DelayedEffects.AddRange(s.DelayedEffects);
+        state.DelayedEffects.AddRange(s.DelayedEffects ?? new List<DelayedEffect>());
         state.IndicatorHistory.Clear();
         state.IndicatorHistory.AddRange(s.IndicatorHistory ?? new List<IndicatorSnapshot>());
         state.ScenariosDone.Clear();

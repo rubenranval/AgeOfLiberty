@@ -278,8 +278,67 @@ public class ChoiceEvent
     public string? LearnLabel { get; set; }
 }
 
+public enum DispatchKind
+{
+    Consequence,
+    Progress,
+}
+
+/// <summary>
+/// A price movement attributable to a specific game event. Prices deliberately
+/// exclude normal market jitter so the UI never credits random movement to a
+/// player's decision.
+/// </summary>
+public class DispatchPriceChange
+{
+    public int AtomId { get; set; }
+    public int OldPrice { get; set; }
+    public int NewPrice { get; set; }
+    public double PercentChange { get; set; }
+}
+
+/// <summary>
+/// Persistent, player-facing record of a decision and its consequences. A
+/// choice owns one record: it can live in the Unfolding section while a delayed
+/// effect is pending, then move into the chronological feed when it resolves.
+/// </summary>
+public class GameDispatch
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public DispatchKind Kind { get; set; } = DispatchKind.Consequence;
+    public int ChoiceId { get; set; }
+    public int DecisionTurn { get; set; }
+    public int EventTurn { get; set; }
+    public int? TriggerTurn { get; set; }
+    public string Title { get; set; } = "Consequence";
+    public string Cause { get; set; } = "";
+    public string ImmediateOutcome { get; set; } = "";
+    public string? DelayedOutcome { get; set; }
+    public bool IsPending { get; set; }
+    public bool IsRead { get; set; }
+    public List<DispatchPriceChange> ImmediatePriceChanges { get; set; } = new();
+    public List<DispatchPriceChange> DelayedPriceChanges { get; set; } = new();
+    public string? LearnUrl { get; set; }
+    public string? LearnLabel { get; set; }
+
+    [JsonIgnore]
+    public string DisplayOutcome =>
+        !IsPending && !string.IsNullOrWhiteSpace(DelayedOutcome)
+            ? DelayedOutcome!
+            : ImmediateOutcome;
+
+    [JsonIgnore]
+    public IReadOnlyList<DispatchPriceChange> DisplayPriceChanges =>
+        !IsPending && DelayedPriceChanges.Count > 0
+            ? DelayedPriceChanges
+            : ImmediatePriceChanges;
+}
+
 public class DelayedEffect
 {
+    public string? DispatchId { get; set; }
+    public int ChoiceId { get; set; }
+    public int DecisionTurn { get; set; }
     public int TriggerTurn { get; set; }
     public string Feedback { get; set; } = "";
     public string? LearnUrl { get; set; }

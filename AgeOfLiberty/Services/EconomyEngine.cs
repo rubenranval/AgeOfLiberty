@@ -235,12 +235,39 @@ public class EconomyEngine : IDisposable
         var ready = _state.DelayedEffects.Where(e => e.TriggerTurn <= _state.Turn).ToList();
         foreach (var effect in ready)
         {
+            var changes = DescribePriceChanges(effect.Effects);
             ApplyEffects(effect.Effects);
             _state.AddLog(effect.Feedback);
             _state.DelayedEffects.Remove(effect);
-            // Let the cascade play out before the modal explains it
-            var fb = effect.Feedback;
-            ScheduleFeedback(fb);
+
+            var dispatch = !string.IsNullOrWhiteSpace(effect.DispatchId)
+                ? _state.Dispatches.FirstOrDefault(d => d.Id == effect.DispatchId)
+                : null;
+
+            if (dispatch == null)
+            {
+                var choice = _config.Choices.FirstOrDefault(c => c.Id == effect.ChoiceId);
+                dispatch = new GameDispatch
+                {
+                    ChoiceId = effect.ChoiceId,
+                    DecisionTurn = effect.DecisionTurn > 0 ? effect.DecisionTurn : effect.TriggerTurn,
+                    EventTurn = _state.Turn,
+                    Cause = choice?.Label ?? "An earlier decision",
+                    ImmediateOutcome = choice?.Feedback ?? "",
+                    LearnUrl = effect.LearnUrl,
+                    LearnLabel = effect.LearnLabel,
+                };
+                _state.Dispatches.Add(dispatch);
+            }
+
+            dispatch.EventTurn = _state.Turn;
+            dispatch.DelayedOutcome = string.IsNullOrWhiteSpace(effect.Feedback)
+                ? "A delayed consequence reached the market."
+                : effect.Feedback;
+            dispatch.DelayedPriceChanges = changes;
+            dispatch.IsPending = false;
+            dispatch.IsRead = false;
+            _state.ToastDispatchId = dispatch.Id;
         }
     }
 
@@ -304,6 +331,37 @@ public class EconomyEngine : IDisposable
     // the shock (mult^damping per hop), breadth-first, up to CascadeMaxHops.
     // Each hop lands CascadeHopDelayMs after the previous — matching the
     // traveling-pulse animation on the map.
+
+    public List<DispatchPriceChange> DescribePriceChanges(IReadOnlyDictionary<int, double> effects)
+    {
+        var availableIds = _config
+            .GetAvailableAtoms(GatedEraIndex())
+            .Select(a => a.Id)
+            .ToHashSet();
+
+        return effects
+            .Where(kv => availableIds.Contains(kv.Key) && _config.AtomsById.ContainsKey(kv.Key))
+            .Select(kv =>
+            {
+                var atom = _config.AtomsById[kv.Key];
+                var oldPrice = _state.GetCleanPrice(atom);
+                var newPrice = Math.Max(1, (int)Math.Round(
+                    atom.BasePrice * _state.GetMultiplier(atom.Id) * kv.Value));
+                var percent = oldPrice == 0
+                    ? 0
+                    : Math.Round((newPrice - oldPrice) * 1000.0 / oldPrice) / 10.0;
+                return new DispatchPriceChange
+                {
+                    AtomId = atom.Id,
+                    OldPrice = oldPrice,
+                    NewPrice = newPrice,
+                    PercentChange = percent,
+                };
+            })
+            .Where(change => change.OldPrice != change.NewPrice)
+            .OrderByDescending(change => Math.Abs(change.PercentChange))
+            .ToList();
+    }
 
     public void ApplyEffects(Dictionary<int, double> effects)
     {
@@ -375,29 +433,6 @@ public class EconomyEngine : IDisposable
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 foreach (var atomId in hopWave.Keys) _state.Cascading[atomId] = false;
-                _state.NotifyStateChanged();
-            });
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // Component/app lifetime ended.
-        }
-    }
-
-    public void ScheduleFeedback(string? feedback, int delayMs = 3_500)
-    {
-        if (string.IsNullOrWhiteSpace(feedback)) return;
-        _ = ShowFeedbackAsync(feedback, delayMs, _pendingWorkCts.Token);
-    }
-
-    private async Task ShowFeedbackAsync(string feedback, int delayMs, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await Task.Delay(delayMs, cancellationToken);
-            await MainThread.InvokeOnMainThreadAsync(() =>
-            {
-                _state.FeedbackText = feedback;
                 _state.NotifyStateChanged();
             });
         }

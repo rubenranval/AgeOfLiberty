@@ -107,17 +107,57 @@ else
                     </div>
                 </div>
 
-                <!-- Toast -->
-                @if (State.FeedbackText != null)
+                <!-- Immediate consequence / dispatch detail. The backdrop is
+                     intentionally inert: only the card dismisses itself. -->
+                @if (ActiveDispatch is GameDispatch activeDispatch)
                 {
-                    <div class="overlay feedback-overlay" @onclick="DismissFeedback">
-                        <div class="feedback-modal">
-                            <span class="bracket tl"></span><span class="bracket tr"></span>
-                            <span class="bracket bl"></span><span class="bracket br"></span>
-                            <div class="feedback-text">@State.FeedbackText</div>
+                    <div class="overlay feedback-overlay" role="dialog" aria-modal="true" aria-label="Consequence">
+                        <button type="button" class="feedback-modal consequence-card"
+                                @onclick="DismissFeedback" @onclick:stopPropagation="true">
+                            <div class="consequence-choice">
+                                <div class="consequence-label">You decided · Turn @activeDispatch.DecisionTurn</div>
+                                <div class="consequence-cause">@activeDispatch.Cause</div>
+                            </div>
+                            @if (activeDispatch.DisplayPriceChanges.Count > 0)
+                            {
+                                <div class="consequence-section-label">Cost changes</div>
+                                <div class="consequence-prices">
+                                    @foreach (var change in activeDispatch.DisplayPriceChanges.Take(3))
+                                    {
+                                        var atom = Config.AtomsById.GetValueOrDefault(change.AtomId);
+                                        var wentUp = change.PercentChange > 0;
+                                        <div class="consequence-price @(wentUp ? "up" : "down")">
+                                            <div class="consequence-price-icon">@(atom?.Icon ?? "◆")</div>
+                                            <div class="consequence-price-name">@(atom?.Name ?? "Price")</div>
+                                            <div class="consequence-price-delta">@(wentUp ? "▲" : "▼")@Math.Abs(change.PercentChange).ToString("0.#")%</div>
+                                            <div class="consequence-price-values"><s>$@EconomyEngine.FormatNumber(change.OldPrice)</s> → $@EconomyEngine.FormatNumber(change.NewPrice)</div>
+                                        </div>
+                                    }
+                                </div>
+                                @if (activeDispatch.DisplayPriceChanges.Count > 3)
+                                {
+                                    <div class="consequence-more">+@(activeDispatch.DisplayPriceChanges.Count - 3) more changes in Dispatches</div>
+                                }
+                            }
+                            <div class="feedback-text">@activeDispatch.DisplayOutcome</div>
+                            @if (activeDispatch.IsPending && activeDispatch.TriggerTurn is int triggerTurn)
+                            {
+                                <div class="consequence-pending">⌛ Further effects may unfold in @Math.Max(0, triggerTurn - State.Turn) turns.</div>
+                            }
                             <div class="feedback-hint">tap to continue</div>
-                        </div>
+                        </button>
                     </div>
+                }
+
+                @if (ToastDispatch is GameDispatch toastDispatch)
+                {
+                    <button type="button" class="dispatch-toast" aria-live="polite" @onclick="() => OpenDispatchDetail(toastDispatch.Id)">
+                        <span class="dispatch-toast-icon">!</span>
+                        <span>
+                            <span class="dispatch-toast-title">A consequence unfolded</span>
+                            <span class="dispatch-toast-copy">From your Turn @toastDispatch.DecisionTurn decision · tap to review</span>
+                        </span>
+                    </button>
                 }
 
                 <!-- ═══ TUTORIAL: the engine walks the observer through ═══ -->
@@ -1161,33 +1201,112 @@ else
                 </div>
             }
 
-            <!-- ═══ ISSUE HISTORY ═══ -->
-            @if (_historyOpen)
+            <!-- ═══ DISPATCHES ═══ -->
+            @if (_dispatchesOpen)
             {
-                <div class="overlay" @onclick="() => _historyOpen = false">
-                    <div class="history-card" @onclick:stopPropagation="true">
-                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-                            <div class="chronicle-view-title" style="margin:0;">Decisions</div>
-                            <button class="stock-close" @onclick="() => _historyOpen = false">✕</button>
-                        </div>
-                        @if (State.ChoiceEvents.Count == 0)
-                        {
-                            <div style="text-align:center;padding:32px 10px;color:var(--text-muted);font-size:14px;">No decisions yet. The engine is waiting.</div>
-                        }
-                        @foreach (var ev in State.ChoiceEvents.Where(e => !string.IsNullOrWhiteSpace(e.Label)).Reverse())
-                        {
-                            var evChoice = ev.ChoiceId != 0 ? Config.Choices.FirstOrDefault(x => x.Id == ev.ChoiceId) : null;
-                            <div class="decision-item" style="border-left-color:@(ev.FreedomWeight >= 0 ? "var(--gold-line)" : "rgba(255,86,72,0.5)");">
-                                <div class="decision-turn">T@(ev.Turn)</div>
-                                <div class="decision-label" style="flex:1;min-width:0;">@ev.Label</div>
-                                @if (!string.IsNullOrWhiteSpace(evChoice?.LearnUrl))
-                                {
-                                    <button class="learn-btn learn-btn-sm" @onclick="() => OpenLearnUrl(evChoice.LearnUrl)" @onclick:stopPropagation="true">⌕</button>
-                                }
+                var pendingDispatches = FilteredDispatches.Where(d => d.IsPending).OrderBy(d => d.TriggerTurn).ToList();
+                var resolvedDispatches = FilteredDispatches.Where(d => !d.IsPending).OrderByDescending(d => d.EventTurn).ToList();
+                <div class="dispatch-panel" role="dialog" aria-modal="true" aria-label="Dispatches notification center">
+                    <div class="dispatch-head">
+                        <div class="dispatch-title-row">
+                            <div>
+                                <div class="dispatch-kicker">The Engine's Record</div>
+                                <div class="dispatch-title">Dispatches</div>
                             </div>
+                            <button class="dispatch-close" @onclick="CloseDispatches" aria-label="Close Dispatches">✕</button>
+                        </div>
+                        <div class="dispatch-actions">
+                            <span class="dispatch-unread-count">@UnreadDispatchCount unread</span>
+                            @if (UnreadDispatchCount > 0)
+                            {
+                                <button class="dispatch-mark-read" @onclick="MarkAllDispatchesRead">Mark all read</button>
+                            }
+                        </div>
+                        <div class="dispatch-filters" aria-label="Dispatch filters">
+                            <button class="dispatch-filter @(_dispatchFilter == DispatchFilter.All ? "on" : "")" @onclick="() => SetDispatchFilter(DispatchFilter.All)">All</button>
+                            <button class="dispatch-filter @(_dispatchFilter == DispatchFilter.Consequences ? "on" : "")" @onclick="() => SetDispatchFilter(DispatchFilter.Consequences)">Consequences</button>
+                            @if (State.Dispatches.Any(d => d.Kind == DispatchKind.Progress))
+                            {
+                                <button class="dispatch-filter @(_dispatchFilter == DispatchFilter.Progress ? "on" : "")" @onclick="() => SetDispatchFilter(DispatchFilter.Progress)">Progress</button>
+                            }
+                        </div>
+                    </div>
+
+                    @if (pendingDispatches.Count > 0)
+                    {
+                        <div class="dispatch-unfolding">
+                            <div class="dispatch-unfolding-head"><span>Unfolding</span><span>@pendingDispatches.Count pending</span></div>
+                            @foreach (var dispatch in pendingDispatches)
+                            {
+                                <button class="dispatch-pending-row" @onclick="() => OpenDispatchDetail(dispatch.Id)">
+                                    <span class="dispatch-pending-icon">⌛</span>
+                                    <span class="dispatch-pending-copy">
+                                        <span class="dispatch-pending-title">@dispatch.Cause</span>
+                                        <span class="dispatch-pending-sub">Decided T@dispatch.DecisionTurn · outcome not yet known</span>
+                                    </span>
+                                    <span class="dispatch-pending-eta">@Math.Max(0, (dispatch.TriggerTurn ?? State.Turn) - State.Turn) turns</span>
+                                </button>
+                            }
+                        </div>
+                    }
+
+                    <div class="dispatch-list">
+                        @if (pendingDispatches.Count == 0 && resolvedDispatches.Count == 0)
+                        {
+                            <div class="dispatch-empty">
+                                <div class="dispatch-empty-hex">⬡</div>
+                                <div class="dispatch-empty-title">Nothing to report</div>
+                                <div class="dispatch-empty-copy">Decisions and their consequences are recorded here as they happen. Your first issue is on its way.</div>
+                            </div>
+                        }
+                        @foreach (var group in resolvedDispatches.GroupBy(d => d.EventTurn))
+                        {
+                            <div class="dispatch-turn-marker">Turn @group.Key</div>
+                            @foreach (var dispatch in group)
+                            {
+                                <button class="dispatch-item @(!dispatch.IsRead ? "unread" : "")" @onclick="() => OpenDispatchDetail(dispatch.Id)">
+                                    @if (!dispatch.IsRead)
+                                    {
+                                        <span class="dispatch-unread-dot"></span>
+                                    }
+                                    <span class="dispatch-item-icon">⚖</span>
+                                    <span class="dispatch-item-body">
+                                        <span class="dispatch-item-meta">
+                                            <span>Consequence</span>
+                                            <span>@(dispatch.EventTurn == dispatch.DecisionTurn ? $"T{dispatch.EventTurn}" : $"decided T{dispatch.DecisionTurn}")</span>
+                                        </span>
+                                        <span class="dispatch-item-cause">@dispatch.Cause</span>
+                                        <span class="dispatch-item-text">@dispatch.DisplayOutcome</span>
+                                        @if (dispatch.DisplayPriceChanges.Count > 0)
+                                        {
+                                            <span class="dispatch-deltas">
+                                                @foreach (var change in dispatch.DisplayPriceChanges.Take(3))
+                                                {
+                                                    var atom = Config.AtomsById.GetValueOrDefault(change.AtomId);
+                                                    <span class="dispatch-delta @(change.PercentChange > 0 ? "up" : "down")">@(atom?.Icon ?? "◆") @(atom?.Name ?? "Price") @(change.PercentChange > 0 ? "▲" : "▼")@Math.Abs(change.PercentChange).ToString("0.#")%</span>
+                                                }
+                                            </span>
+                                        }
+                                    </span>
+                                </button>
+                            }
                         }
                     </div>
                 </div>
+            }
+
+            @if (_activeTab == Tab.Map && !State.DrawerOpen && State.Phase == GamePhase.Play && !_dispatchesOpen)
+            {
+                <button class="dispatch-bell" @onclick="OpenDispatches" aria-label="Open Dispatches">
+                    <svg aria-hidden="true" viewBox="0 0 24 24">
+                        <path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"></path>
+                        <path d="M13.7 21a2 2 0 0 1-3.4 0"></path>
+                    </svg>
+                    @if (UnreadDispatchCount > 0)
+                    {
+                        <span class="dispatch-badge">@Math.Min(99, UnreadDispatchCount)</span>
+                    }
+                </button>
             }
 
             <!-- ═══ FAB NAVIGATION ═══ -->
@@ -1216,6 +1335,7 @@ else
 
 @code {
     private enum Tab { Map, City, Badges, Settings }
+    private enum DispatchFilter { All, Consequences, Progress }
     private enum EraRevealPhase { None, Announcement, Address, ChestReveal }
 
     private bool _loaded;
@@ -1354,6 +1474,7 @@ else
     private void RestoreFrom(SaveGame save)
     {
         SaveService.Apply(save, State);
+        MigrateLegacyDispatches();
         State.Phase = GamePhase.Play;
         _introStarted = true;                       // never boot the intro
         _lastCeremonyEra = GatedEraIdx;             // ceremonies up to here were shown
@@ -1531,7 +1652,10 @@ else
     private string _ceremonyCitizens = "";
     private DateTime _ceremonyShownAt = DateTime.MinValue;
     private bool _lastHadScenario;
-    private string? _lastFeedback;
+    private string? _lastShownDispatchId;
+    private string? _scheduledToastId;
+    private DateTime _dispatchOpenedAt = DateTime.MinValue;
+    private CancellationTokenSource? _toastCts;
     private double _musicVolume = 0.4;
     private double _sfxVolume = 0.6;
     private long _lastGoldForCoins;
@@ -1707,7 +1831,8 @@ else
     private DateTime _nextIssueUtc = DateTime.MaxValue;
     private bool _issueHeld;                     // matured, waiting in the chip
     private bool _autoOpenPending;               // will auto-open when surface is idle
-    private bool _historyOpen;
+    private bool _dispatchesOpen;
+    private DispatchFilter _dispatchFilter;
     private int _issueEraId = -1;
     private string _issueCountdown = "";
 
@@ -1873,7 +1998,7 @@ else
         && !(State.EraUnlockAnimIndex is int pendingEra && EraCeremonyAllowed(pendingEra))
         && _eraRevealPhase == EraRevealPhase.None
         && _stockViewAtomId == null
-        && !_historyOpen
+        && !_dispatchesOpen
         && !_fabOpen
         && !_tutorialActive;
 
@@ -1921,7 +2046,7 @@ else
     private void IssueChipTap()
     {
         if (_issueHeld) OpenIssue();
-        else _historyOpen = true;
+        else OpenDispatches();
     }
 
     private static string FmtCountdown(TimeSpan t)
@@ -2103,6 +2228,81 @@ else
     private Era CurrentEra => Config.Eras[GatedEraIdx];
     private List<Atom> AvailableAtoms => Config.GetAvailableAtoms(GatedEraIdx);
     private Atom? SelectedAtom => State.SelectedAtomId.HasValue && Config.AtomsById.TryGetValue(State.SelectedAtomId.Value, out var a) ? a : null;
+    private GameDispatch? ActiveDispatch => string.IsNullOrWhiteSpace(State.ActiveDispatchId)
+        ? null
+        : State.Dispatches.FirstOrDefault(d => d.Id == State.ActiveDispatchId);
+    private GameDispatch? ToastDispatch => string.IsNullOrWhiteSpace(State.ToastDispatchId)
+        ? null
+        : State.Dispatches.FirstOrDefault(d => d.Id == State.ToastDispatchId);
+    private int UnreadDispatchCount => State.Dispatches.Count(d => !d.IsPending && !d.IsRead);
+    private IEnumerable<GameDispatch> FilteredDispatches => _dispatchFilter switch
+    {
+        DispatchFilter.Consequences => State.Dispatches.Where(d => d.Kind == DispatchKind.Consequence),
+        DispatchFilter.Progress => State.Dispatches.Where(d => d.Kind == DispatchKind.Progress),
+        _ => State.Dispatches,
+    };
+
+    private void MigrateLegacyDispatches()
+    {
+        if (State.ChoiceEvents.Count == 0) return;
+        var knownChoices = State.Dispatches.Select(d => (d.ChoiceId, d.DecisionTurn)).ToHashSet();
+        foreach (var choiceEvent in State.ChoiceEvents.Where(e => e.ChoiceId != 0))
+        {
+            if (knownChoices.Contains((choiceEvent.ChoiceId, choiceEvent.Turn))) continue;
+            var choice = Config.Choices.FirstOrDefault(c => c.Id == choiceEvent.ChoiceId);
+            State.Dispatches.Add(new GameDispatch
+            {
+                ChoiceId = choiceEvent.ChoiceId,
+                DecisionTurn = choiceEvent.Turn,
+                EventTurn = choiceEvent.Turn,
+                Cause = choiceEvent.Label,
+                ImmediateOutcome = choice?.Feedback ?? "Recorded before Dispatches was introduced.",
+                IsRead = true,
+                LearnUrl = choice?.LearnUrl,
+                LearnLabel = choice?.LearnLabel,
+            });
+        }
+        if (State.Dispatches.Count > 120)
+            State.Dispatches.RemoveRange(0, State.Dispatches.Count - 120);
+    }
+
+    private void OpenDispatches()
+    {
+        _fabOpen = false;
+        State.ToastDispatchId = null;
+        _dispatchesOpen = true;
+        StateHasChanged();
+    }
+
+    private void CloseDispatches()
+    {
+        _dispatchesOpen = false;
+        StateHasChanged();
+    }
+
+    private void SetDispatchFilter(DispatchFilter filter)
+    {
+        _dispatchFilter = filter;
+        StateHasChanged();
+    }
+
+    private void MarkAllDispatchesRead()
+    {
+        foreach (var dispatch in State.Dispatches.Where(d => !d.IsPending)) dispatch.IsRead = true;
+        State.NotifyStateChanged();
+    }
+
+    private void OpenDispatchDetail(string dispatchId)
+    {
+        var dispatch = State.Dispatches.FirstOrDefault(d => d.Id == dispatchId);
+        if (dispatch == null) return;
+        dispatch.IsRead = true;
+        State.ActiveDispatchId = dispatch.Id;
+        if (State.ToastDispatchId == dispatch.Id) State.ToastDispatchId = null;
+        _dispatchesOpen = false;
+        _dispatchOpenedAt = DateTime.UtcNow;
+        State.NotifyStateChanged();
+    }
 
     private bool _notifsEnabled = true;
     private async Task OnNotifsToggle(ChangeEventArgs e)
@@ -2307,8 +2507,25 @@ else
         }
         _lastPopForMilestone = popMilestone;
 
-        if (State.FeedbackText != null && State.FeedbackText != _lastFeedback) { try { await JS.InvokeVoidAsync("AgeOfLibertyAudio.sfxNotify"); } catch { } }
-        _lastFeedback = State.FeedbackText;
+        if (State.ActiveDispatchId != null && State.ActiveDispatchId != _lastShownDispatchId)
+        {
+            _lastShownDispatchId = State.ActiveDispatchId;
+            _dispatchOpenedAt = DateTime.UtcNow;
+        }
+        else if (State.ActiveDispatchId == null)
+        {
+            _lastShownDispatchId = null;
+        }
+
+        if (State.ToastDispatchId is string toastId && toastId != _scheduledToastId)
+        {
+            _scheduledToastId = toastId;
+            _toastCts?.Cancel();
+            _toastCts?.Dispose();
+            _toastCts = new CancellationTokenSource();
+            try { await JS.InvokeVoidAsync("AgeOfLibertyAudio.sfxNotify"); } catch { }
+            _ = DismissToastAfterAsync(toastId, _toastCts.Token);
+        }
     }
 
     private async Task UpdateEdgeParticles()
@@ -2372,6 +2589,7 @@ else
 
     private void SetTab(Tab tab)
     {
+        _dispatchesOpen = false;
         try { _ = JS.InvokeVoidAsync("AgeOfLibertyJuice.setActive", tab == Tab.Map); } catch { }
         if (_activeTab == Tab.Map && tab != Tab.Map)
         {
@@ -2441,7 +2659,29 @@ else
 
     private void CloseDrawer() { State.DrawerOpen = false; State.SelectedAtomId = null; _buildMenuOpen = false; State.NotifyStateChanged(); }
 
-    private void DismissFeedback() { State.FeedbackText = null; State.NotifyStateChanged(); }
+    private void DismissFeedback()
+    {
+        // Prevent the choice tap that created this card from immediately
+        // dismissing it as the overlay mounts beneath the pointer.
+        if (DateTime.UtcNow - _dispatchOpenedAt < TimeSpan.FromMilliseconds(350)) return;
+        if (ActiveDispatch is GameDispatch dispatch) dispatch.IsRead = true;
+        State.ActiveDispatchId = null;
+        State.NotifyStateChanged();
+    }
+
+    private async Task DismissToastAfterAsync(string dispatchId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(3800, cancellationToken);
+            if (State.ToastDispatchId == dispatchId)
+            {
+                State.ToastDispatchId = null;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
 
     private double _drawerTouchY;
     private void DrawerTouchStart(TouchEventArgs e) { if (e.Touches.Length > 0) _drawerTouchY = e.Touches[0].ClientY; }
@@ -2710,6 +2950,8 @@ else
         _disposed = true;
         _introCts?.Cancel();
         _introCts?.Dispose();
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
         FlushTimePlayed();
         if (State.Phase != GamePhase.Intro) SaveService.Save(State, _eraStartUtc, _eraStartPop);
         State.OnStateChanged -= OnStateChanged;

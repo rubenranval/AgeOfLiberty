@@ -34,7 +34,31 @@ public class ScenarioEngine
         var immEffects = immediate
                     .GroupBy(e => e.AtomId)
                     .ToDictionary(g => g.Key, g => g.First().Multiplier);
+        var immediateChanges = Economy.DescribePriceChanges(immEffects);
         Economy.ApplyEffects(immEffects);
+
+        var dispatch = new GameDispatch
+        {
+            ChoiceId = choice.Id,
+            DecisionTurn = _state.Turn,
+            EventTurn = _state.Turn,
+            TriggerTurn = delayed.Count > 0 ? _state.Turn + choice.DelayTurns : null,
+            Cause = choice.Label,
+            ImmediateOutcome = string.IsNullOrWhiteSpace(choice.Feedback)
+                ? "Your decision changed the market."
+                : choice.Feedback,
+            IsPending = delayed.Count > 0,
+            // DismissFeedback marks this read. Keeping it unread until the
+            // player taps the card prevents an interrupted session from losing it.
+            IsRead = false,
+            ImmediatePriceChanges = immediateChanges,
+            LearnUrl = choice.LearnUrl,
+            LearnLabel = choice.LearnLabel,
+        };
+        _state.Dispatches.Add(dispatch);
+        if (_state.Dispatches.Count > 120)
+            _state.Dispatches.RemoveRange(0, _state.Dispatches.Count - 120);
+        _state.ActiveDispatchId = dispatch.Id;
 
         if (delayed.Count > 0)
         {
@@ -43,6 +67,9 @@ public class ScenarioEngine
                 .ToDictionary(g => g.Key, g => g.First().Multiplier);
             _state.DelayedEffects.Add(new DelayedEffect
             {
+                DispatchId = dispatch.Id,
+                ChoiceId = choice.Id,
+                DecisionTurn = _state.Turn,
                 TriggerTurn = _state.Turn + choice.DelayTurns,
                 Feedback = choice.DelayedFeedback ?? "",
                 LearnUrl = choice.LearnUrl,
@@ -63,11 +90,15 @@ public class ScenarioEngine
             FreedomWeight = choice.FreedomWeight,
             AffectedAtomIds = allAffected,
             ChoiceId = choice.Id,
+            Multipliers = new Dictionary<int, double>(immEffects),
+            DelayedMultipliers = delayed
+                .GroupBy(e => e.AtomId)
+                .ToDictionary(g => g.Key, g => g.First().Multiplier),
+            DelayedTurn = delayed.Count > 0 ? _state.Turn + choice.DelayTurns : 0,
+            LearnUrl = choice.LearnUrl,
+            LearnLabel = choice.LearnLabel,
         });
 
-        // Feedback
-        //_state.FeedbackText = choice.Feedback;
-        Economy.ScheduleFeedback(choice.Feedback);
         _state.AddLog(choice.Feedback);
         _state.ScenariosDone.Add(_state.ActiveScenario.Slug);
         _state.ActiveScenario = null;
