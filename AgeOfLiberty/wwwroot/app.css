@@ -4,8 +4,6 @@
    Structure is drawn with light, not fills. Gold is earned.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-
 :root {
     /* ── The chamber ── */
     --bg-0: #04070d;
@@ -79,6 +77,23 @@
     --sal: env(safe-area-inset-left, 0px);
     --sar: env(safe-area-inset-right, 0px);
     --tab-h: 0px;
+}
+
+/* Expensive live backdrop sampling is one of the largest GPU costs in an
+   Android WebView. Keep the opaque/glass colors but skip the blur on devices
+   selected by the automatic low-power profile. */
+html.aol-low-power [class] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+    }
 }
 
 /* ─── Reset ───────────────────────────────────────────────────────────── */

@@ -27,7 +27,7 @@ public static class NotificationHelper
         }
     }
 
-    public static async void ScheduleIssue(DateTime utc)
+    public static async Task ScheduleIssueAsync(DateTime utc)
     {
         try
         {
@@ -53,7 +53,7 @@ public static class NotificationHelper
         try { LocalNotificationCenter.Current.Cancel(IssueNotifId); } catch { }
     }
 
-    public static async void RequestPermission()
+    public static async Task RequestPermissionAsync()
     {
         try { await LocalNotificationCenter.Current.RequestNotificationPermission(); } catch { }
     }

@@ -52,7 +52,8 @@ window.AgeOfLibertyIntro = {
         var H = this._mini ? (canvas.clientHeight || 64) : window.innerHeight;
         this._renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
         this._renderer.setSize(W, H);
-        this._renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        var perf = window.AoLPerformance || {};
+        this._renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, perf.pixelRatioCap || 1.75));
 
         this._scene = new THREE.Scene();
         this._camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 100);
@@ -108,8 +109,11 @@ window.AgeOfLibertyIntro = {
 
         // Render loop
         var cyan = new THREE.Color(0x4ad8ff), gold = new THREE.Color(0xf0c860);
-        function loop() {
+        var lastFrame = 0;
+        function loop(now) {
             self._raf = requestAnimationFrame(loop);
+            if (lastFrame && now - lastFrame < (perf.frameIntervalMs || 16)) return;
+            lastFrame = now;
             var dt = self._clock.getDelta();
             var t = self._clock.getElapsedTime();
 
@@ -220,6 +224,7 @@ window.AgeOfLibertyIntro = {
         this._clearType();
         if (this._raf) cancelAnimationFrame(this._raf);
         this._raf = null;
+        if (this._scene && window.AoLDisposeObject3D) window.AoLDisposeObject3D(this._scene);
         if (this._renderer) { try { this._renderer.dispose(); } catch (e) {} }
         this._renderer = null; this._scene = null; this._camera = null;
         this._badge = null; this._badgeGroup = null;

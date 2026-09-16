@@ -8,7 +8,7 @@
 @inject ScenarioEngine Scenarios
 @inject DirectusClient Directus
 @inject IJSRuntime JS
-@implements IDisposable
+@implements IAsyncDisposable
 
 @if (!_loaded)
 {
@@ -268,7 +268,7 @@ else
                                     <div class="char-hex">
                                         @if (!string.IsNullOrWhiteSpace(character?.PortraitAsset))
                                         {
-                                            <img src="assets/characters/@character.PortraitAsset" alt="" />
+                                            <img src="assets/characters/@character.PortraitAsset" alt="" decoding="async" />
                                         }
                                         else
                                         {
@@ -1151,7 +1151,7 @@ else
                     else if (EraIssuesRemain)
                     {
                         <div class="issue-chip-label">Next issue</div>
-                        <div class="issue-chip-time">@_issueCountdown</div>
+                        <div id="issueCountdown" class="issue-chip-time">@_issueCountdown</div>
                     }
                     else
                     {
@@ -1476,7 +1476,7 @@ else
         StateHasChanged();
         await Task.Delay(950);
         try { await JS.InvokeVoidAsync("AgeOfLibertyIntro.destroy"); } catch { }
-        StartGame();
+        await StartGame();
     }
     private bool _fabOpen;
 
@@ -1798,12 +1798,13 @@ else
         _nextIssueUtc = DateTime.UtcNow + IssueInterval(EraIssuesDone);
         Preferences.Set("aol_next_issue_era", _issueEraId);
         Preferences.Set("aol_next_issue_ticks", _nextIssueUtc.Ticks);
-        NotificationHelper.ScheduleIssue(_nextIssueUtc);
+        _ = NotificationHelper.ScheduleIssueAsync(_nextIssueUtc);
     }
 
     private void TickIssues()
     {
         if (State.Phase == GamePhase.Intro || !_loaded) return;
+        var renderNeeded = false;
 
         // Debounced autosave + time-played flush — MUST run before any early
         // return below (e.g. the era-complete state used to skip it entirely).
@@ -1830,17 +1831,28 @@ else
             if (State.EraUnlockAnimIndex != desired)
             {
                 State.EraUnlockAnimIndex = desired;
+                renderNeeded = true;
             }
         }
 
         if (_issueEraId != CurrentEra.Id) InitEraSchedule();
-        if (!EraIssuesRemain) { _issueCountdown = ""; StateHasChanged(); return; }
+        if (!EraIssuesRemain)
+        {
+            if (_issueCountdown.Length > 0)
+            {
+                _issueCountdown = "";
+                _ = JS.InvokeVoidAsync("AgeOfLiberty.setText", "issueCountdown", "");
+            }
+            if (renderNeeded) StateHasChanged();
+            return;
+        }
 
         var now = DateTime.UtcNow;
         if (!_issueHeld && now >= _nextIssueUtc)
         {
             _issueHeld = true;
             _autoOpenPending = true;
+            renderNeeded = true;
             NotificationHelper.CancelIssue();
         }
         if (_issueHeld && _autoOpenPending && CanAutoOpenIssue())
@@ -1849,7 +1861,8 @@ else
             _ = AutoOpenWithGrace();
         }
         _issueCountdown = _issueHeld ? "" : FmtCountdown(_nextIssueUtc - now);
-        StateHasChanged();
+        _ = JS.InvokeVoidAsync("AgeOfLiberty.setText", "issueCountdown", _issueCountdown);
+        if (renderNeeded) StateHasChanged();
     }
 
     private bool CanAutoOpenIssue() =>
@@ -2092,13 +2105,13 @@ else
     private Atom? SelectedAtom => State.SelectedAtomId.HasValue && Config.AtomsById.TryGetValue(State.SelectedAtomId.Value, out var a) ? a : null;
 
     private bool _notifsEnabled = true;
-    private void OnNotifsToggle(ChangeEventArgs e)
+    private async Task OnNotifsToggle(ChangeEventArgs e)
     {
         _notifsEnabled = e.Value is bool b && b;
         try
         {
             NotificationHelper.Enabled = _notifsEnabled;
-            if (_notifsEnabled) NotificationHelper.RequestPermission();
+            if (_notifsEnabled) await NotificationHelper.RequestPermissionAsync();
         }
         catch { }
     }
@@ -2173,7 +2186,13 @@ else
         if (State.Phase == GamePhase.Play && _activeTab == Tab.Map && !_gesturesInitialized)
         {
             await Task.Delay(100);
-            try { _dotnetRef ??= DotNetObjectReference.Create(this); await JS.InvokeVoidAsync("AgeOfLiberty.initTouchGestures", "graphArea", _dotnetRef); _gesturesInitialized = true; } catch { }
+                try
+                {
+                    _dotnetRef ??= DotNetObjectReference.Create(this);
+                    await JS.InvokeVoidAsync("AgeOfLiberty.initTouchGestures", "graphArea", _dotnetRef, _panX, _panY, _zoom);
+                    _gesturesInitialized = true;
+                }
+                catch { }
         }
 
         if (State.Phase == GamePhase.Play && _activeTab == Tab.Map && !_edgeParticlesInitialized)
@@ -2311,14 +2330,27 @@ else
     public void OnGestureUpdate(double panX, double panY, double zoom)
     {
         _panX = panX; _panY = panY; _zoom = zoom;
-        InvokeAsync(StateHasChanged);
     }
+
+    private int _renderQueued;
+    private bool _disposed;
 
     private void OnStateChanged()
     {
+        if (_disposed) return;
         _saveDirty = true;
         try { CivicIndicators.RecordIfNewTurn(State, Config, Economy.GetIncomeRate()); } catch { }
-        InvokeAsync(StateHasChanged);
+        if (Interlocked.Exchange(ref _renderQueued, 1) == 1) return;
+        _ = InvokeAsync(FlushRenderAsync);
+    }
+
+    private async Task FlushRenderAsync()
+    {
+        // Collapse bursts from an economy tick, a cascade, and JS callbacks into
+        // one frame. This keeps the large Razor tree from rendering repeatedly.
+        await Task.Delay(16);
+        Interlocked.Exchange(ref _renderQueued, 0);
+        if (!_disposed) StateHasChanged();
     }
 
     // ─── Observatory (city page metric explorer) ─────────────────────────
@@ -2341,12 +2373,18 @@ else
     private void SetTab(Tab tab)
     {
         try { _ = JS.InvokeVoidAsync("AgeOfLibertyJuice.setActive", tab == Tab.Map); } catch { }
+        if (_activeTab == Tab.Map && tab != Tab.Map)
+        {
+            try { _ = JS.InvokeVoidAsync("AgeOfLiberty.deactivateMap"); } catch { }
+            _gesturesInitialized = false;
+            _edgeParticlesInitialized = false;
+        }
         _activeTab = tab;
         if (tab == Tab.Map) { _gesturesInitialized = false; _edgeParticlesInitialized = false; }
         StateHasChanged();
     }
 
-    private async void StartGame()
+    private async Task StartGame()
     {
         if (string.IsNullOrWhiteSpace(State.CityName)) State.CityName = "Liberty City";
         State.Phase = GamePhase.Play;
@@ -2354,7 +2392,7 @@ else
         // Fresh experiment: clear old save + reset the issue ladder
         SaveService.Delete();
         IssueProgress.Reset(Config.Eras.Select(e => e.Id));
-        NotificationHelper.RequestPermission();
+        await NotificationHelper.RequestPermissionAsync();
         _issueEraId = -1;
         _lastCeremonyEra = 0;
         _eraStartUtc = DateTime.UtcNow;
@@ -2377,7 +2415,7 @@ else
         StateHasChanged();
     }
 
-    private async void SelectAtom(int atomId)
+    private async Task SelectAtom(int atomId)
     {
         if (State.SelectedAtomId == atomId)
         {
@@ -2409,7 +2447,7 @@ else
     private void DrawerTouchStart(TouchEventArgs e) { if (e.Touches.Length > 0) _drawerTouchY = e.Touches[0].ClientY; }
     private void DrawerTouchMove(TouchEventArgs e) { if (e.Touches.Length > 0 && e.Touches[0].ClientY - _drawerTouchY > 60) CloseDrawer(); }
 
-    private async void HandleChoice(int choiceId)
+    private async Task HandleChoice(int choiceId)
     {
         Scenarios.MakeChoice(choiceId);
         // Issue answered: climb the geometric ladder
@@ -2601,7 +2639,7 @@ else
 
     private bool _buildMenuOpen;
 
-    private async void BuildMany(int atomId, int count)
+    private async Task BuildMany(int atomId, int count)
     {
         _buildMenuOpen = false;
         if (!Config.AtomsById.TryGetValue(atomId, out var atom)) { StateHasChanged(); return; }
@@ -2623,7 +2661,7 @@ else
         StateHasChanged();
     }
 
-    private async void BuildAtom(int atomId)
+    private async Task BuildAtom(int atomId)
     {
         if (Config.AtomsById.TryGetValue(atomId, out var atom))
         {
@@ -2667,14 +2705,19 @@ else
         if (double.TryParse(e.Value?.ToString(), out var val)) { _sfxVolume = val / 100.0; try { await JS.InvokeVoidAsync("AgeOfLibertyAudio.setSfxVolume", _sfxVolume); } catch { } }
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
+        _disposed = true;
+        _introCts?.Cancel();
+        _introCts?.Dispose();
         FlushTimePlayed();
         if (State.Phase != GamePhase.Intro) SaveService.Save(State, _eraStartUtc, _eraStartPop);
         State.OnStateChanged -= OnStateChanged;
         Economy.Stop();
+        Economy.CancelPendingWork();
         _issueTicker?.Stop();
         _issueTicker?.Dispose();
+        try { await JS.InvokeVoidAsync("AgeOfLiberty.dispose"); } catch { }
         _dotnetRef?.Dispose();
     }
 }

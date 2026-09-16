@@ -1,5 +1,6 @@
 ﻿using AgeOfLiberty.Services;
 using Microsoft.Extensions.Logging;
+using Plugin.LocalNotification;
 using System.Globalization;
 
 namespace AgeOfLiberty;
@@ -16,13 +17,7 @@ public static class MauiProgram
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()
-            .ConfigureFonts(fonts =>
-            {
-                fonts.AddFont("JetBrainsMono-Regular.ttf", "JetBrainsMono");
-                fonts.AddFont("JetBrainsMono-Bold.ttf", "JetBrainsMono-Bold");
-                fonts.AddFont("Outfit-Regular.ttf", "Outfit");
-                fonts.AddFont("Outfit-Bold.ttf", "Outfit-Bold");
-            });
+            .UseLocalNotification();
 
         builder.Services.AddMauiBlazorWebView();
 

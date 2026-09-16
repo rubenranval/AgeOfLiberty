@@ -42,7 +42,8 @@ window.AgeOfLibertyEra = {
 
         this._renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
         this._renderer.setSize(w, h);
-        this._renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        var perf = window.AoLPerformance || {};
+        this._renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, perf.pixelRatioCap || 1.75));
         this._renderer.setClearColor(0x000000, 0);
         this._renderer.outputEncoding = THREE.sRGBEncoding;
         this._renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -457,9 +458,13 @@ window.AgeOfLibertyEra = {
     _startLoop: function () {
         var self = this;
         var badgeAppearDelay = 0.3;
+        var lastFrame = 0;
+        var frameInterval = (window.AoLPerformance || {}).frameIntervalMs || 16;
 
-        function loop() {
+        function loop(now) {
             self._raf = requestAnimationFrame(loop);
+            if (lastFrame && now - lastFrame < frameInterval) return;
+            lastFrame = now;
             var dt = self._clock.getDelta();
             var time = self._clock.getElapsedTime();
 
@@ -629,6 +634,7 @@ window.AgeOfLibertyEra = {
     // ─── DESTROY ─────────────────────────────────────────────────────────
     destroy: function () {
         if (this._raf) cancelAnimationFrame(this._raf); this._raf = null;
+        if (this._scene && window.AoLDisposeObject3D) window.AoLDisposeObject3D(this._scene);
         [this._particles, this._burstParticles, this._shockwaves].forEach(function (arr) {
             for (var i = 0; i < arr.length; i++) { if (this._scene) this._scene.remove(arr[i].mesh); }
         }.bind(this));

@@ -1,4 +1,30 @@
+window.AoLDisposeObject3D = function (root) {
+    if (!root || typeof root.traverse !== 'function') return;
+    const geometries = new Set();
+    const materials = new Set();
+    const textures = new Set();
+    root.traverse(function (node) {
+        if (node.geometry) geometries.add(node.geometry);
+        const nodeMaterials = Array.isArray(node.material) ? node.material : (node.material ? [node.material] : []);
+        nodeMaterials.forEach(function (material) {
+            materials.add(material);
+            Object.keys(material).forEach(function (key) {
+                const value = material[key];
+                if (value && value.isTexture) textures.add(value);
+            });
+        });
+    });
+    textures.forEach(function (texture) { texture.dispose(); });
+    materials.forEach(function (material) { material.dispose(); });
+    geometries.forEach(function (geometry) { geometry.dispose(); });
+};
+
 window.AgeOfLiberty = {
+
+    setText: function (elementId, value) {
+        const element = document.getElementById(elementId);
+        if (element && element.textContent !== value) element.textContent = value;
+    },
 
     // ─── BACKGROUND PARTICLES ───────────────────────────────────────────────
     _bgRaf: null,
@@ -91,8 +117,11 @@ window.AgeOfLiberty = {
     // ─── TOUCH GESTURES (pan + pinch-to-zoom + tap passthrough) ────────────
     _gestureState: null,
     _dotnetRef: null,
+    _gestureCleanup: null,
+    _gestureNotifyTimer: null,
 
-    initTouchGestures: function (elementId, dotnetRef) {
+    initTouchGestures: function (elementId, dotnetRef, panX, panY, zoom) {
+        this.destroyTouchGestures();
         const el = document.getElementById(elementId);
         if (!el) return;
 
@@ -107,15 +136,14 @@ window.AgeOfLiberty = {
             hasMoved: false,
             initialPinchDist: 0,
             initialZoom: 1,
-            currentZoom: 1,
-            panX: 0, panY: 0,
+            currentZoom: typeof zoom === 'number' ? zoom : 1,
+            panX: typeof panX === 'number' ? panX : 0,
+            panY: typeof panY === 'number' ? panY : 0,
         };
         this._gestureState = state;
+        this._applyTransform(el, state);
 
-        // Only prevent default on multi-touch and on moves (not on single touchstart — let taps through)
-        el.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
-
-        el.addEventListener('touchstart', (e) => {
+        const onTouchStart = (e) => {
             if (e.touches.length === 1) {
                 state.hasMoved = false;
                 state.touchStartX = e.touches[0].clientX;
@@ -130,9 +158,13 @@ window.AgeOfLiberty = {
                 state.initialPinchDist = this._pinchDist(e.touches);
                 state.initialZoom = state.currentZoom;
             }
-        }, { passive: false });
+        };
 
-        el.addEventListener('touchmove', (e) => {
+        const onTouchMove = (e) => {
+            // Prevent the native WebView from scrolling while the map is being
+            // manipulated. One non-passive listener is enough; the previous
+            // implementation registered two listeners on every map visit.
+            e.preventDefault();
             if (e.touches.length === 1) {
                 const dx = e.touches[0].clientX - state.touchStartX;
                 const dy = e.touches[0].clientY - state.touchStartY;
@@ -154,9 +186,9 @@ window.AgeOfLiberty = {
                 state.currentZoom = Math.max(0.4, Math.min(2.5, state.initialZoom * scale));
                 this._applyTransform(el, state);
             }
-        });
+        };
 
-        el.addEventListener('touchend', (e) => {
+        const onTouchEnd = (e) => {
             if (!state.hasMoved && e.changedTouches.length > 0) {
                 // It was a tap — find the element under the finger and click it
                 const touch = e.changedTouches[0];
@@ -179,38 +211,65 @@ window.AgeOfLiberty = {
             if (state.hasMoved) {
                 this._notifyBlazor(state);
             }
-        });
+        };
 
         // Desktop mouse drag
         let mouseDown = false;
-        el.addEventListener('mousedown', (e) => {
+        const onMouseDown = (e) => {
             if (e.target.closest('[data-node]')) return;
             mouseDown = true;
             state.startX = e.clientX - state.panX;
             state.startY = e.clientY - state.panY;
             el.style.cursor = 'grabbing';
-        });
-        window.addEventListener('mousemove', (e) => {
+        };
+        const onMouseMove = (e) => {
             if (!mouseDown) return;
             state.panX = e.clientX - state.startX;
             state.panY = e.clientY - state.startY;
             this._applyTransform(el, state);
-        });
-        window.addEventListener('mouseup', () => {
+        };
+        const onMouseUp = () => {
             if (mouseDown) {
                 mouseDown = false;
                 el.style.cursor = 'grab';
                 this._notifyBlazor(state);
             }
-        });
+        };
 
         // Desktop wheel zoom
-        el.addEventListener('wheel', (e) => {
+        const onWheel = (e) => {
             e.preventDefault();
             state.currentZoom = Math.max(0.4, Math.min(2.5, state.currentZoom + (e.deltaY > 0 ? -0.1 : 0.1)));
             this._applyTransform(el, state);
-            this._notifyBlazor(state);
-        }, { passive: false });
+            this._queueGestureNotify(state);
+        };
+
+        el.addEventListener('touchstart', onTouchStart, { passive: false });
+        el.addEventListener('touchmove', onTouchMove, { passive: false });
+        el.addEventListener('touchend', onTouchEnd);
+        el.addEventListener('mousedown', onMouseDown);
+        el.addEventListener('wheel', onWheel, { passive: false });
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+
+        this._gestureCleanup = function () {
+            el.removeEventListener('touchstart', onTouchStart);
+            el.removeEventListener('touchmove', onTouchMove);
+            el.removeEventListener('touchend', onTouchEnd);
+            el.removeEventListener('mousedown', onMouseDown);
+            el.removeEventListener('wheel', onWheel);
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+        };
+    },
+
+    destroyTouchGestures: function () {
+        if (this._gestureCleanup) this._gestureCleanup();
+        this._gestureCleanup = null;
+        this._gestureState = null;
+        this._dotnetRef = null;
+        if (this._gestureNotifyTimer) clearTimeout(this._gestureNotifyTimer);
+        this._gestureNotifyTimer = null;
     },
 
     resetGesture: function () {
@@ -241,8 +300,18 @@ window.AgeOfLiberty = {
 
     _notifyBlazor: function (state) {
         if (this._dotnetRef) {
-            this._dotnetRef.invokeMethodAsync('OnGestureUpdate', state.panX, state.panY, state.currentZoom);
+            this._dotnetRef.invokeMethodAsync('OnGestureUpdate', state.panX, state.panY, state.currentZoom)
+                .catch(function () { /* page was disposed */ });
         }
+    },
+
+    _queueGestureNotify: function (state) {
+        if (this._gestureNotifyTimer) clearTimeout(this._gestureNotifyTimer);
+        const self = this;
+        this._gestureNotifyTimer = setTimeout(function () {
+            self._gestureNotifyTimer = null;
+            self._notifyBlazor(state);
+        }, 80);
     },
 
     _pinchDist: function (touches) {
@@ -255,6 +324,8 @@ window.AgeOfLiberty = {
     _edgeRaf: null,
     _edgeParticles: [],
     _edges: [],
+    _edgeGroup: null,
+    _edgeLastFrame: 0,
 
     initEdgeParticles: function (svgId) {
         const svg = document.getElementById(svgId);
@@ -267,49 +338,48 @@ window.AgeOfLiberty = {
             svg.appendChild(group);
         }
 
-        if (this._edgeRaf) cancelAnimationFrame(this._edgeRaf);
+        this.stopEdgeParticles();
+        this._edgeGroup = group;
 
         const self = this;
-        const draw = () => {
+        const draw = (now) => {
+            self._edgeRaf = requestAnimationFrame(draw);
+            if (now - self._edgeLastFrame < 33) return;
+            self._edgeLastFrame = now;
             for (const p of self._edgeParticles) {
                 p.t += p.speed;
                 if (p.t > 1) p.t -= 1;
-            }
-
-            while (group.firstChild) group.removeChild(group.firstChild);
-
-            for (const p of self._edgeParticles) {
                 const edge = self._edges[p.edgeIdx];
                 if (!edge) continue;
                 const x = edge.x1 + (edge.x2 - edge.x1) * p.t;
                 const y = edge.y1 + (edge.y2 - edge.y1) * p.t;
                 const opacity = (0.35 + 0.35 * Math.sin(p.t * Math.PI * 2)).toFixed(2);
-
-                const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                c.setAttribute('cx', x.toFixed(1));
-                c.setAttribute('cy', y.toFixed(1));
-                c.setAttribute('r', '1.6');
-                c.setAttribute('fill', '#4aeadc');
-                c.setAttribute('opacity', opacity);
-                group.appendChild(c);
+                p.node.setAttribute('cx', x.toFixed(1));
+                p.node.setAttribute('cy', y.toFixed(1));
+                p.node.setAttribute('opacity', opacity);
             }
-
-            self._edgeRaf = requestAnimationFrame(draw);
         };
 
-        draw();
+        this._edgeRaf = requestAnimationFrame(draw);
     },
 
     updateEdges: function (edges) {
         this._edges = edges || [];
         this._edgeParticles = [];
+        const group = this._edgeGroup;
+        if (group) group.replaceChildren();
         for (let i = 0; i < this._edges.length; i++) {
             const count = 1 + Math.floor(Math.random() * 2);
             for (let j = 0; j < count; j++) {
+                const node = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                node.setAttribute('r', '1.6');
+                node.setAttribute('fill', '#4aeadc');
+                if (group) group.appendChild(node);
                 this._edgeParticles.push({
                     edgeIdx: i,
                     t: Math.random(),
                     speed: 0.002 + Math.random() * 0.003,
+                    node: node,
                 });
             }
         }
@@ -320,6 +390,15 @@ window.AgeOfLiberty = {
             cancelAnimationFrame(this._edgeRaf);
             this._edgeRaf = null;
         }
+        this._edgeLastFrame = 0;
+        if (this._edgeGroup) this._edgeGroup.replaceChildren();
+        this._edgeParticles = [];
+        this._edges = [];
+    },
+
+    deactivateMap: function () {
+        this.destroyTouchGestures();
+        this.stopEdgeParticles();
     },
 
     // ─── SHARE ──────────────────────────────────────────────────────────────
@@ -372,7 +451,8 @@ window.AgeOfLiberty = {
 
             this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
             this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            var perf = window.AoLPerformance || {};
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, perf.pixelRatioCap || 1.75));
             container.innerHTML = '';
             container.appendChild(this.renderer.domElement);
 
@@ -503,9 +583,12 @@ window.AgeOfLiberty = {
             }, delay);
         },
 
-        animate: function () {
+        animate: function (now) {
             if (!this.active) return;
-            this.frameId = requestAnimationFrame(this.animate.bind(this));
+            this.frameId = requestAnimationFrame(this._boundAnimate);
+            var frameInterval = (window.AoLPerformance || {}).frameIntervalMs || 16;
+            if (this._lastFrame && now - this._lastFrame < frameInterval) return;
+            this._lastFrame = now;
             if (!this.scene || !this.camera || !this.group || !this.clock) return;
 
             var dt = Math.min(this.clock.getDelta(), 0.05);
@@ -579,6 +662,7 @@ window.AgeOfLiberty = {
         destroy: function () {
             this.active = false;
             this._isScalingIn = false;
+            this._lastFrame = 0;
             if (this.frameId) cancelAnimationFrame(this.frameId);
             if (this._onResize) window.removeEventListener('resize', this._onResize);
             var i;
@@ -591,6 +675,8 @@ window.AgeOfLiberty = {
                 if (sp.mesh && this.scene) { this.scene.remove(sp.mesh); sp.mesh.geometry.dispose(); sp.mesh.material.dispose(); }
             }
             if (this._glowTexture) { this._glowTexture.dispose(); this._glowTexture = null; }
+            if (this.group) window.AoLDisposeObject3D(this.group);
+            if (this.particles) window.AoLDisposeObject3D(this.particles);
             if (this.renderer) {
                 this.renderer.dispose();
                 if (this.renderer.domElement && this.renderer.domElement.parentNode) this.renderer.domElement.remove();
@@ -607,6 +693,7 @@ window.AgeOfLiberty = {
 
         era.init(containerId);
         era.active = true;
+        era._boundAnimate = era.animate.bind(era);
         if (era.clock) era.clock.start();
 
         if (era.group) {
@@ -628,7 +715,7 @@ window.AgeOfLiberty = {
             requestAnimationFrame(scaleIn);
         }
 
-        era.animate();
+        era._boundAnimate(performance.now());
         era.triggerWave(200);
         era.triggerWave(700);
         era.triggerWave(1300);
@@ -644,6 +731,12 @@ window.AgeOfLiberty = {
         } else {
             this._era3d.destroy();
         }
+    },
+
+    dispose: function () {
+        this.deactivateMap();
+        this.stopParticles();
+        if (this._era3d && this._era3d.scene) this._era3d.destroy();
     }
 };
 

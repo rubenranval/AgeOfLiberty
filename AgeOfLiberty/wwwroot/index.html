@@ -24,6 +24,7 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Rajdhani:wght@400;500;600;700&display=swap" />
     <link href="app.css" rel="stylesheet" />
 </head>
 <body>
@@ -43,6 +44,24 @@
         </div>
     </div>
     <script src="_framework/blazor.webview.js" autostart="false"></script>
+    <script>
+        // A conservative automatic profile for phones with limited CPU/RAM or
+        // users who request reduced motion. Individual renderers consume this
+        // instead of independently rendering at an expensive 2x pixel ratio.
+        (function () {
+            var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            var lowMemory = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4;
+            var lowCpu = typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4;
+            var lowPower = reduced || lowMemory || lowCpu;
+            if (lowPower) document.documentElement.classList.add('aol-low-power');
+            window.AoLPerformance = {
+                lowPower: lowPower,
+                reducedMotion: reduced,
+                pixelRatioCap: lowPower ? 1.25 : 1.75,
+                frameIntervalMs: lowPower ? 33 : 16
+            };
+        })();
+    </script>
     <script src="lib/three.min.js"></script>
     <script src="lib/gltfloader.js"></script>
     <!-- audio-bus MUST load before anything constructs an Audio object: it
@@ -56,11 +75,6 @@
     <script src="intro.js"></script>
     <script src="intro-music.js"></script>
     <script src="badge.js"></script>
-    <script>
-        window.addEventListener('load', function () {
-            setTimeout(function () { Blazor.start(); }, 200);
-        });
-    </script>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Rajdhani:wght@400;500;600;700&display=swap" />
+    <script>Blazor.start();</script>
 </body>
 </html>

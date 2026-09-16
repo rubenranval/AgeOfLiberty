@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace AgeOfLiberty.Services;
 
-public class DirectusClient
+public class DirectusClient : IDisposable
 {
     private readonly HttpClient _http;
     private const string DefaultBaseUrl = "https://api.ageofliberty.org";
@@ -14,7 +14,7 @@ public class DirectusClient
 
     public DirectusClient()
     {
-        _http = new HttpClient();
+        _http = new HttpClient { Timeout = TimeSpan.FromSeconds(12) };
         BaseUrl = Preferences.Get("directus_url", DefaultBaseUrl);
     }
 
@@ -26,19 +26,19 @@ public class DirectusClient
         return Task.CompletedTask;
     }
 
-    public async Task<GameBundle?> FetchGameBundleAsync()
+    public async Task<GameBundle?> FetchGameBundleAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             // game_config: fetch as list, take first item
-            var configTask = FetchListAsync<GameConfig>("/items/game_config?limit=1&fields=*");
-            var erasTask = FetchListAsync<Era>("/items/eras?sort=sort_order&fields=*&limit=-1");
-            var atomsTask = FetchListAsync<Atom>("/items/atoms?fields=*&sort=era_id,name&limit=-1");
-            var depsTask = FetchListAsync<Dependency>("/items/dependencies?fields=*&limit=-1");
-            var charsTask = FetchListAsync<Character>("/items/characters?fields=*&limit=-1");
-            var scenariosTask = FetchListAsync<Scenario>("/items/scenarios?fields=*&sort=trigger_pop&limit=-1");
-            var choicesTask = FetchListAsync<Choice>("/items/choices?fields=*&sort=scenario_id,sort_order&limit=-1");
-            var effectsTask = FetchListAsync<Models.Effect>("/items/effects?fields=*&limit=-1");
+            var configTask = FetchListAsync<GameConfig>("/items/game_config?limit=1&fields=*", cancellationToken);
+            var erasTask = FetchListAsync<Era>("/items/eras?sort=sort_order&fields=*&limit=-1", cancellationToken);
+            var atomsTask = FetchListAsync<Atom>("/items/atoms?fields=*&sort=era_id,name&limit=-1", cancellationToken);
+            var depsTask = FetchListAsync<Dependency>("/items/dependencies?fields=*&limit=-1", cancellationToken);
+            var charsTask = FetchListAsync<Character>("/items/characters?fields=*&limit=-1", cancellationToken);
+            var scenariosTask = FetchListAsync<Scenario>("/items/scenarios?fields=*&sort=trigger_pop&limit=-1", cancellationToken);
+            var choicesTask = FetchListAsync<Choice>("/items/choices?fields=*&sort=scenario_id,sort_order&limit=-1", cancellationToken);
+            var effectsTask = FetchListAsync<Models.Effect>("/items/effects?fields=*&limit=-1", cancellationToken);
 
             await Task.WhenAll(configTask, erasTask, atomsTask, depsTask, charsTask, scenariosTask, choicesTask, effectsTask);
 
@@ -64,15 +64,9 @@ public class DirectusClient
     }
 
 
-    private async Task<T?> FetchAsync<T>(string path)
+    private async Task<List<T>?> FetchListAsync<T>(string path, CancellationToken cancellationToken)
     {
-        var response = await _http.GetFromJsonAsync<DirectusResponse<T>>($"{BaseUrl}{path}");
-        return response != null ? response.Data : default;
-    }
-
-    private async Task<List<T>?> FetchListAsync<T>(string path)
-    {
-        var response = await _http.GetFromJsonAsync<DirectusResponse<List<T>>>($"{BaseUrl}{path}");
+        var response = await _http.GetFromJsonAsync<DirectusResponse<List<T>>>($"{BaseUrl}{path}", cancellationToken);
         return response?.Data;
     }
 
@@ -83,7 +77,9 @@ public class DirectusClient
     public async Task SaveBundleToCacheAsync(GameBundle bundle)
     {
         var json = JsonSerializer.Serialize(bundle);
-        await File.WriteAllTextAsync(CachePath, json);
+        var temporaryPath = CachePath + ".tmp";
+        await File.WriteAllTextAsync(temporaryPath, json);
+        File.Move(temporaryPath, CachePath, true);
     }
 
     public async Task<GameBundle?> LoadBundleFromCacheAsync()
@@ -99,6 +95,8 @@ public class DirectusClient
             return null;
         }
     }
+
+    public void Dispose() => _http.Dispose();
 }
 
 public class GameBundle

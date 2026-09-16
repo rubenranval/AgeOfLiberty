@@ -13,6 +13,7 @@
     var _sprites = {};
     var _W = 0, _H = 0;
     var _nextStreak = 0;
+    var _resizeTimer = null;
 
     function makeSprite(size, r, g, b) {
         var c = document.createElement('canvas');
@@ -113,7 +114,8 @@
 
         _W = window.innerWidth;
         _H = window.innerHeight;
-        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+        var perf = window.AoLPerformance || {};
+        var dpr = Math.min(window.devicePixelRatio || 1, perf.pixelRatioCap || 1.75);
         _canvas.width = _W * dpr;
         _canvas.height = _H * dpr;
         _ctx.scale(dpr, dpr);
@@ -123,17 +125,20 @@
         _sprites.gold = makeSprite(64, 235, 190, 100);
         _sprites.iceBig = makeSprite(96, 140, 200, 250);
 
-        var count = Math.min(110, Math.floor(_W * _H / 9500));
+        var particleCap = perf.reducedMotion ? 24 : (perf.lowPower ? 55 : 90);
+        var count = Math.min(particleCap, Math.floor(_W * _H / (perf.lowPower ? 15000 : 10500)));
         _particles = [];
         for (var i = 0; i < count; i++) _particles.push(spawnParticle(true));
         _streaks = []; _emits = [];
         _nextStreak = 2 + Math.random() * 4;
 
         var last = performance.now();
+        var frameInterval = perf.frameIntervalMs || 16;
         var _watchdog = 0;
 
         function loop(now) {
             _raf = requestAnimationFrame(loop);
+            if (now - last < frameInterval) return;
             var dt = Math.min(0.05, (now - last) / 1000);
             last = now;
             var t = now / 1000;
@@ -208,14 +213,29 @@
         document.addEventListener('visibilitychange', _onVis);
     }
 
-    function _onVis() { if (!document.hidden && _canvas) init(_canvas.id); }
-    function _onResize() { if (_canvas) init(_canvas.id); }
+    function _onVis() {
+        if (document.hidden) {
+            if (_raf) cancelAnimationFrame(_raf);
+            _raf = null;
+        } else if (_canvas) {
+            init(_canvas.id);
+        }
+    }
+    function _onResize() {
+        if (_resizeTimer) clearTimeout(_resizeTimer);
+        _resizeTimer = setTimeout(function () {
+            _resizeTimer = null;
+            if (_canvas) init(_canvas.id);
+        }, 150);
+    }
 
     function destroy() {
         if (_raf) cancelAnimationFrame(_raf);
         _raf = null;
         window.removeEventListener('resize', _onResize);
         document.removeEventListener('visibilitychange', _onVis);
+        if (_resizeTimer) clearTimeout(_resizeTimer);
+        _resizeTimer = null;
         _particles = []; _streaks = []; _emits = [];
     }
 
@@ -240,6 +260,7 @@
 
     window.AgeOfLiberty = window.AgeOfLiberty || {};
     window.AgeOfLiberty.initParticles = init;
+    window.AgeOfLiberty.stopParticles = destroy;
     window.AgeOfLibertyAmbient = { init: init, destroy: destroy, emit: emit };
 
 })();

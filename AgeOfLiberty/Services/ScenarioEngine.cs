@@ -67,8 +67,7 @@ public class ScenarioEngine
 
         // Feedback
         //_state.FeedbackText = choice.Feedback;
-        var fb = choice.Feedback;
-        Task.Delay(3500).ContinueWith(_ => { _state.FeedbackText = fb; _state.NotifyStateChanged(); });
+        Economy.ScheduleFeedback(choice.Feedback);
         _state.AddLog(choice.Feedback);
         _state.ScenariosDone.Add(_state.ActiveScenario.Slug);
         _state.ActiveScenario = null;
@@ -78,14 +77,5 @@ public class ScenarioEngine
         Economy.Start();
         _state.NotifyStateChanged();
 
-        // Clear feedback after 4s
-//        Task.Delay(4000).ContinueWith(_ =>
-//        {
-//            if (_state.FeedbackText == choice.Feedback)
-//            {
-//                _state.FeedbackText = null;
-//                _state.NotifyStateChanged();
-//            }
-//        });
     }
 }

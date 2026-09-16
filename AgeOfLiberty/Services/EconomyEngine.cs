@@ -1,5 +1,5 @@
 ﻿using AgeOfLiberty.Models;
-using AgeOfLiberty.Services;
+using System.Diagnostics;
 
 namespace AgeOfLiberty.Services;
 
@@ -10,10 +10,15 @@ public class EconomyEngine : IDisposable
     private readonly ScenarioEngine _scenarios;
     private readonly Random _rng = new();
 
-    private Timer? _incomeTicker;
-    private Timer? _popGrowthTicker;
-    private Timer? _jitterTicker;
-    private Timer? _turnTicker;
+    private readonly CancellationTokenSource _lifetimeCts = new();
+    private CancellationTokenSource _pendingWorkCts;
+    private CancellationTokenSource? _loopCts;
+    private Task? _loopTask;
+
+    private double _incomeElapsedMs;
+    private double _popGrowthElapsedMs;
+    private double _jitterElapsedMs;
+    private double _turnElapsedMs;
 
     private bool _running;
 
@@ -29,6 +34,7 @@ public class EconomyEngine : IDisposable
         _state = state;
         _config = config;
         _scenarios = scenarios;
+        _pendingWorkCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
     }
 
     public void Start()
@@ -37,26 +43,111 @@ public class EconomyEngine : IDisposable
         _running = true;
 
         var cfg = _config.Config;
-        _incomeTicker = new Timer(_ => TickIncome(), null, 0, cfg.TickIntervalMs);
-        _popGrowthTicker = new Timer(_ => TickPopGrowth(), null, cfg.PopGrowthIntervalMs, cfg.PopGrowthIntervalMs);
-        _jitterTicker = new Timer(_ => TickJitter(), null, 0, cfg.JitterIntervalMs);
-        _turnTicker = new Timer(_ => TickTurn(), null, 1000, 1000);
+        // Income and price jitter historically fired immediately. Preserve that
+        // behavior while running everything through one serialized scheduler.
+        _incomeElapsedMs = Math.Max(100, cfg.TickIntervalMs);
+        _popGrowthElapsedMs = 0;
+        _jitterElapsedMs = Math.Max(250, cfg.JitterIntervalMs);
+        _turnElapsedMs = 0;
+
+        _loopCts?.Dispose();
+        _loopCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
+        _loopTask = RunLoopAsync(_loopCts.Token);
     }
 
     public void Stop()
     {
         _running = false;
-        _incomeTicker?.Dispose(); _incomeTicker = null;
-        _popGrowthTicker?.Dispose(); _popGrowthTicker = null;
-        _jitterTicker?.Dispose(); _jitterTicker = null;
-        _turnTicker?.Dispose(); _turnTicker = null;
+        _loopCts?.Cancel();
+        _loopCts?.Dispose();
+        _loopCts = null;
+        _loopTask = null;
     }
 
-    public void Dispose() => Stop();
-
-    private void TickIncome()
+    public void Dispose()
     {
-        if (_state.Phase != GamePhase.Play || _state.ActiveScenario != null) return;
+        Stop();
+        _pendingWorkCts.Cancel();
+        _pendingWorkCts.Dispose();
+        _lifetimeCts.Cancel();
+        _lifetimeCts.Dispose();
+    }
+
+    public void CancelPendingWork()
+    {
+        _pendingWorkCts.Cancel();
+        _pendingWorkCts.Dispose();
+        _pendingWorkCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
+    }
+
+    private async Task RunLoopAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(100));
+        var clock = Stopwatch.StartNew();
+        var previous = clock.Elapsed;
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                var now = clock.Elapsed;
+                // Do not replay minutes of missed ticks after an app resume.
+                var elapsedMs = Math.Clamp((now - previous).TotalMilliseconds, 0, 1_000);
+                previous = now;
+                await MainThread.InvokeOnMainThreadAsync(() => AdvanceLoop(elapsedMs, cancellationToken));
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Normal when the simulation pauses, the page closes, or the app exits.
+        }
+    }
+
+    private void AdvanceLoop(double elapsedMs, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested || !_running || !_config.IsLoaded) return;
+
+        var cfg = _config.Config;
+        _incomeElapsedMs += elapsedMs;
+        _popGrowthElapsedMs += elapsedMs;
+        _jitterElapsedMs += elapsedMs;
+        _turnElapsedMs += elapsedMs;
+
+        var changed = false;
+        var incomeInterval = Math.Max(100, cfg.TickIntervalMs);
+        var growthInterval = Math.Max(250, cfg.PopGrowthIntervalMs);
+        var jitterInterval = Math.Max(250, cfg.JitterIntervalMs);
+
+        if (_incomeElapsedMs >= incomeInterval)
+        {
+            _incomeElapsedMs %= incomeInterval;
+            changed |= TickIncome();
+        }
+
+        if (_popGrowthElapsedMs >= growthInterval)
+        {
+            _popGrowthElapsedMs %= growthInterval;
+            changed |= TickPopGrowth();
+        }
+
+        if (_jitterElapsedMs >= jitterInterval)
+        {
+            _jitterElapsedMs %= jitterInterval;
+            changed |= TickJitter();
+        }
+
+        if (_turnElapsedMs >= 1_000)
+        {
+            _turnElapsedMs %= 1_000;
+            changed |= TickTurn();
+        }
+
+        if (changed) _state.NotifyStateChanged();
+    }
+
+    private bool TickIncome()
+    {
+        if (_state.Phase != GamePhase.Play || _state.ActiveScenario != null) return false;
 
         var cfg = _config.Config;
         var atomIncome = AtomIncome();
@@ -66,18 +157,18 @@ public class EconomyEngine : IDisposable
             + atomIncome) * 0.15;
 
         _state.Gold += Math.Max(1, (long)Math.Round(incomePerTick));
-        _state.NotifyStateChanged();
+        return true;
     }
 
-    private void TickPopGrowth()
+    private bool TickPopGrowth()
     {
-        if (_state.Phase != GamePhase.Play || _state.ActiveScenario != null) return;
+        if (_state.Phase != GamePhase.Play || _state.ActiveScenario != null) return false;
 
         var housingWeight = _config.Atoms
             .Where(a => a.HousingWeight > 0)
             .Sum(a => _state.GetBuiltCount(a.Id) * a.HousingWeight);
 
-        if (housingWeight <= 0) return;
+        if (housingWeight <= 0) return false;
 
         var growth = _config.Config.PopGrowthRate * housingWeight;
         _state.PopGrowthFraction += growth;
@@ -89,12 +180,12 @@ public class EconomyEngine : IDisposable
             CheckEraUnlock();
         }
 
-        _state.NotifyStateChanged();
+        return true;
     }
 
-    private void TickJitter()
+    private bool TickJitter()
     {
-        if (_state.Phase != GamePhase.Play) return;
+        if (_state.Phase != GamePhase.Play) return false;
 
         var cfg = _config.Config;
         var eraIndex = _config.GetEraIndex(_state.Population);
@@ -105,15 +196,15 @@ public class EconomyEngine : IDisposable
             _state.PriceJitter[atom.Id] = cfg.JitterMin + _rng.NextDouble() * (cfg.JitterMax - cfg.JitterMin);
         }
 
-        _state.NotifyStateChanged();
+        return available.Count > 0;
     }
 
-    private void TickTurn()
+    private bool TickTurn()
     {
-        if (_state.Phase != GamePhase.Play) return;
+        if (_state.Phase != GamePhase.Play) return false;
 
         _state.TickCount++;
-        if (_state.TickCount % _config.Config.TurnTicks != 0) return;
+        if (_state.TickCount % Math.Max(1, _config.Config.TurnTicks) != 0) return false;
 
         _state.Turn++;
 
@@ -136,7 +227,7 @@ public class EconomyEngine : IDisposable
 
         _scenarios.CheckTriggers();
 
-        _state.NotifyStateChanged();
+        return true;
     }
 
     private void ProcessDelayedEffects()
@@ -149,11 +240,7 @@ public class EconomyEngine : IDisposable
             _state.DelayedEffects.Remove(effect);
             // Let the cascade play out before the modal explains it
             var fb = effect.Feedback;
-            Task.Delay(3500).ContinueWith(_ =>
-            {
-                _state.FeedbackText = fb;
-                _state.NotifyStateChanged();
-            });
+            ScheduleFeedback(fb);
         }
     }
 
@@ -261,22 +348,63 @@ public class EconomyEngine : IDisposable
 
     private void ScheduleHop(Dictionary<int, double> hopWave, int delayMs, int visualMs)
     {
-        Task.Delay(delayMs).ContinueWith(_ =>
-        {
-            foreach (var (atomId, mult) in hopWave)
-            {
-                _state.Cascading[atomId] = true;
-                var old = _state.PriceMultipliers.GetValueOrDefault(atomId, 1.0);
-                _state.PriceMultipliers[atomId] = Math.Round(old * mult * 100) / 100;
-            }
-            _state.NotifyStateChanged();
+        _ = RunHopAsync(hopWave, delayMs, visualMs, _pendingWorkCts.Token);
+    }
 
-            Task.Delay(visualMs).ContinueWith(_ =>
+    private async Task RunHopAsync(
+        Dictionary<int, double> hopWave,
+        int delayMs,
+        int visualMs,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (delayMs > 0) await Task.Delay(delayMs, cancellationToken);
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                foreach (var (atomId, mult) in hopWave)
+                {
+                    _state.Cascading[atomId] = true;
+                    var old = _state.PriceMultipliers.GetValueOrDefault(atomId, 1.0);
+                    _state.PriceMultipliers[atomId] = Math.Round(old * mult * 100) / 100;
+                }
+                _state.NotifyStateChanged();
+            });
+
+            await Task.Delay(visualMs, cancellationToken);
+            await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 foreach (var atomId in hopWave.Keys) _state.Cascading[atomId] = false;
                 _state.NotifyStateChanged();
             });
-        });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Component/app lifetime ended.
+        }
+    }
+
+    public void ScheduleFeedback(string? feedback, int delayMs = 3_500)
+    {
+        if (string.IsNullOrWhiteSpace(feedback)) return;
+        _ = ShowFeedbackAsync(feedback, delayMs, _pendingWorkCts.Token);
+    }
+
+    private async Task ShowFeedbackAsync(string feedback, int delayMs, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(delayMs, cancellationToken);
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                _state.FeedbackText = feedback;
+                _state.NotifyStateChanged();
+            });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Component/app lifetime ended.
+        }
     }
 
     // Mirror of the GamePage gate: era N is live only when pop crossed AND
@@ -307,7 +435,6 @@ public class EconomyEngine : IDisposable
             _lastEraIndex = newIndex;
             _state.EraUnlockAnimIndex = newIndex;
             _state.AddLog($"Welcome to the {_config.Eras[newIndex].Name} era!");
-            _state.NotifyStateChanged();
             // No auto-dismiss — player taps to continue
         }
     }
