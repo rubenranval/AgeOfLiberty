@@ -50,6 +50,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<DirectusClient>();
         builder.Services.AddSingleton<GameConfigStore>();
         builder.Services.AddSingleton<GameState>();
+        builder.Services.AddSingleton<CityPressureEngine>();
         builder.Services.AddSingleton<EconomyEngine>();
         builder.Services.AddSingleton<ScenarioEngine>();
 

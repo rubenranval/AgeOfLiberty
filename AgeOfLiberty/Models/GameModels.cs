@@ -118,6 +118,14 @@ public class Atom
     [JsonPropertyName("income_bonus")]
     public long IncomeBonus { get; set; }          // "income_bonus"
 
+    // Optional balancing fields. Older Directus records can omit them; the
+    // pressure engine derives sensible category/capacity fallbacks from slugs.
+    [JsonPropertyName("need_category")]
+    public string? NeedCategory { get; set; }
+
+    [JsonPropertyName("need_capacity")]
+    public double NeedCapacity { get; set; }
+
 }
 
 // Dépendances entre différents atomes
@@ -282,6 +290,38 @@ public enum DispatchKind
 {
     Consequence,
     Progress,
+    Warning,
+}
+
+public enum EraGoalKind
+{
+    Population,
+    BuildAtom,
+    Education,
+    SustainAffordability,
+}
+
+public class EraGoal
+{
+    public string Id { get; set; } = "";
+    public int EraIndex { get; set; }
+    public EraGoalKind Kind { get; set; }
+    public int? AtomId { get; set; }
+    public string Title { get; set; } = "";
+    public double Target { get; set; }
+    public double Progress { get; set; }
+    public bool Completed { get; set; }
+}
+
+public class CityNeedItem
+{
+    public string Category { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string Icon { get; set; } = "◆";
+    public int? AtomId { get; set; }
+    public double Weight { get; set; }
+    public double Coverage { get; set; }
+    public int UnitPrice { get; set; }
 }
 
 /// <summary>

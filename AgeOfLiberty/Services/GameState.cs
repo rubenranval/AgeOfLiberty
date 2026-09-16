@@ -20,6 +20,9 @@ public class GameState
 
     public Dictionary<int, double> PriceJitter { get; set; } = new();
 
+    /// <summary>Endogenous market pressure caused by citizen demand.</summary>
+    public Dictionary<int, double> DemandMultipliers { get; set; } = new();
+
     public Dictionary<int, bool> Cascading { get; set; } = new();
 
     // Atoms built
@@ -44,6 +47,19 @@ public class GameState
     public List<IndicatorSnapshot> IndicatorHistory { get; set; } = new();
     public List<string> Log { get; set; } = new() { "Welcome to Liberty City." };
 
+    // City pressure. All three headline scores use the same direction:
+    // higher is healthier. NetGrowthRate is a per-turn fractional rate.
+    public double Affordability { get; set; } = 1.05;
+    public double Approval { get; set; } = 58;
+    public double NetGrowthRate { get; set; } = 0.003;
+    public double OusterPressure { get; set; }
+    public int OusterWarningStage { get; set; }
+    public int PressureStartedTurn { get; set; }
+    public int HighestEraIndex { get; set; }
+    public string? GameOverReason { get; set; }
+    public List<EraGoal> EraGoals { get; set; } = new();
+    public HashSet<int> GoalRewardedEraIndexes { get; set; } = new();
+
     // UI State
 
     public GamePhase Phase { get; set; } = GamePhase.Intro;
@@ -60,15 +76,16 @@ public class GameState
     public int GetBuiltCount(int atomId) => Built.TryGetValue(atomId, out var c) ? c : 0;
     public double GetMultiplier(int atomId) => PriceMultipliers.TryGetValue(atomId, out var m) ? m : 1.0;
     public double GetJitter(int atomId) => PriceJitter.TryGetValue(atomId, out var j) ? j : 1.0;
+    public double GetDemandMultiplier(int atomId) => DemandMultipliers.TryGetValue(atomId, out var m) ? m : 1.0;
 
     public int GetPrice(Atom atom)
     {
-        return Math.Max(1, (int)Math.Round(atom.BasePrice * GetMultiplier(atom.Id) * GetJitter(atom.Id)));
+        return Math.Max(1, (int)Math.Round(atom.BasePrice * GetMultiplier(atom.Id) * GetDemandMultiplier(atom.Id) * GetJitter(atom.Id)));
     }
 
     public int GetCleanPrice(Atom atom)
     {
-        return Math.Max(1, (int)Math.Round(atom.BasePrice * GetMultiplier(atom.Id)));
+        return Math.Max(1, (int)Math.Round(atom.BasePrice * GetMultiplier(atom.Id) * GetDemandMultiplier(atom.Id)));
     }
 
     public int GetBuildCost(Atom atom, GameConfigStore config)
@@ -126,4 +143,5 @@ public enum GamePhase
     Intro,
     Play,
     Scenario,
+    GameOver,
 }

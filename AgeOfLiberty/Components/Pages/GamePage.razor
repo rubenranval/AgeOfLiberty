@@ -5,6 +5,7 @@
 @inject GameState State
 @inject GameConfigStore Config
 @inject EconomyEngine Economy
+@inject CityPressureEngine Pressure
 @inject ScenarioEngine Scenarios
 @inject DirectusClient Directus
 @inject IJSRuntime JS
@@ -84,38 +85,100 @@ else
                 <!-- ═══ MAP TAB ═══ -->
                 <!-- HUD -->
                 <div class="hud">
-                    <div class="hud-left">
-                        <div class="hud-stat" id="hudGold">
-                            <span class="hud-emoji">💰</span>
-                            <div class="hud-stat-inner">
-                                <div class="hud-num gold-color">$@EconomyEngine.FormatNumber(State.Gold)</div>
-                                <div class="hud-rate">+@EconomyEngine.FormatNumber(Economy.GetIncomeRate())/min</div>
+                    <div class="hud-main-row">
+                        <div class="hud-left">
+                            <div class="hud-stat" id="hudGold">
+                                <span class="hud-emoji">💰</span>
+                                <div class="hud-stat-inner">
+                                    <div class="hud-num gold-color">$@EconomyEngine.FormatNumber(State.Gold)</div>
+                                    <div class="hud-rate">+@EconomyEngine.FormatNumber(Economy.GetIncomeRate())/min</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="hud-center">
+                            <div class="hud-era-name" style="color: @CurrentEra.Color">@CurrentEra.Name</div>
+                            <div class="hud-era-sub">Turn @State.Turn</div>
+                        </div>
+                        <div class="hud-right">
+                            <div class="hud-stat" id="hudPop">
+                                <span class="hud-emoji">👥</span>
+                                <div class="hud-stat-inner">
+                                    <div class="hud-num pop-color">@EconomyEngine.FormatNumber(State.Population)</div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="hud-center">
-                        <div class="hud-era-name" style="color: @CurrentEra.Color">@CurrentEra.Name</div>
-                        <div class="hud-era-sub">Turn @State.Turn</div>
-                    </div>
-                    <div class="hud-right">
-                        <div class="hud-stat" id="hudPop">
-                            <span class="hud-emoji">👥</span>
-                            <div class="hud-stat-inner">
-                                <div class="hud-num pop-color">@EconomyEngine.FormatNumber(State.Population)</div>
-                            </div>
-                        </div>
-                    </div>
+                    <button type="button" class="condition-meters @PressureTone" @onclick="TogglePressureDetails" aria-label="Open city conditions">
+                        <span class="condition-meter">
+                            <span class="condition-top"><span>Affordability</span><b>@Pressure.AffordabilityLabel</b></span>
+                            <span class="condition-track"><span style="@($"width:{Pressure.AffordabilityScore}%")"></span></span>
+                        </span>
+                        <span class="condition-meter">
+                            <span class="condition-top"><span>Growth · 10T</span><b>@GrowthDisplay</b></span>
+                            <span class="condition-track"><span style="@($"width:{GrowthScore}%")"></span></span>
+                        </span>
+                        <span class="condition-meter">
+                            <span class="condition-top"><span>Approval</span><b>@Math.Round(State.Approval)</b></span>
+                            <span class="condition-track"><span style="@($"width:{Math.Round(State.Approval)}%")"></span></span>
+                        </span>
+                    </button>
                 </div>
+
+                @if (CurrentEraGoals.Count > 0)
+                {
+                    <section class="era-goals @(_goalsOpen ? "open" : "")">
+                        <button type="button" class="era-goals-head" @onclick="() => _goalsOpen = !_goalsOpen">
+                            <span>Era goals</span>
+                            <span class="era-goal-dots">
+                                @foreach (var goal in CurrentEraGoals)
+                                {
+                                    <i class="@(goal.Completed ? "done" : "")"></i>
+                                }
+                            </span>
+                            <b>@CompletedEraGoals/3</b><span class="era-goals-caret">⌄</span>
+                        </button>
+                        <div class="era-goals-body">
+                            @foreach (var goal in CurrentEraGoals)
+                            {
+                                var goalPercent = Math.Clamp(goal.Progress / Math.Max(1, goal.Target) * 100, 0, 100);
+                                <div class="era-goal @(goal.Completed ? "done" : "")">
+                                    <div><span>@(goal.Completed ? "✓" : "○")</span><strong>@goal.Title</strong><small>@GoalProgress(goal)</small></div>
+                                    <div class="era-goal-track"><span style="@($"width:{goalPercent:0.#}%")"></span></div>
+                                </div>
+                            }
+                            <div class="era-goals-reward">Complete all three · <b>+$@EconomyEngine.FormatNumber(Pressure.GoalReward(GatedEraIdx))</b></div>
+                        </div>
+                    </section>
+                }
+
+                @if (_pressureDetailsOpen)
+                {
+                    <div class="city-pressure-scrim" @onclick="TogglePressureDetails"></div>
+                    <section class="city-pressure-sheet" role="dialog" aria-modal="true" aria-label="Cost of living basket">
+                        <div class="city-pressure-handle"></div>
+                        <div class="city-pressure-head"><div><small>Citizen needs</small><h2>@Pressure.AffordabilityLabel</h2></div><button @onclick="TogglePressureDetails">✕</button></div>
+                        <p>Household income is compared with the era's essential basket. Build supply before shortages push prices higher.</p>
+                        @foreach (var need in Pressure.GetBasket(GatedEraIdx))
+                        {
+                            var pct = Math.Round(Math.Min(1.35, need.Coverage) * 100);
+                            <button class="need-row" disabled="@(need.AtomId == null)" @onclick="() => SelectNeedAtom(need.AtomId)">
+                                <span class="need-icon">@need.Icon</span><span class="need-copy"><strong>@need.Label</strong><small>$@EconomyEngine.FormatNumber(need.UnitPrice) · @NeedStatus(need.Coverage)</small></span>
+                                <span class="need-coverage @(need.Coverage < .75 ? "critical" : need.Coverage < 1 ? "strained" : "")">@pct%</span>
+                            </button>
+                        }
+                        <div class="city-pressure-note">Coverage below 100% raises demand and living costs. Conditions update once per turn.</div>
+                    </section>
+                }
 
                 <!-- Immediate consequence / dispatch detail. The backdrop is
                      intentionally inert: only the card dismisses itself. -->
                 @if (ActiveDispatch is GameDispatch activeDispatch)
                 {
-                    <div class="overlay feedback-overlay" role="dialog" aria-modal="true" aria-label="Consequence">
+                    <div class="overlay feedback-overlay" role="dialog" aria-modal="true" aria-label="@DispatchLabel(activeDispatch)">
                         <button type="button" class="feedback-modal consequence-card"
                                 @onclick="DismissFeedback" @onclick:stopPropagation="true">
                             <div class="consequence-choice">
-                                <div class="consequence-label">You decided · Turn @activeDispatch.DecisionTurn</div>
+                                <div class="consequence-label">@DispatchLabel(activeDispatch) · Turn @activeDispatch.EventTurn</div>
                                 <div class="consequence-cause">@activeDispatch.Cause</div>
                             </div>
                             @if (activeDispatch.DisplayPriceChanges.Count > 0)
@@ -152,10 +215,10 @@ else
                 @if (ToastDispatch is GameDispatch toastDispatch)
                 {
                     <button type="button" class="dispatch-toast" aria-live="polite" @onclick="() => OpenDispatchDetail(toastDispatch.Id)">
-                        <span class="dispatch-toast-icon">!</span>
+                        <span class="dispatch-toast-icon">@DispatchIcon(toastDispatch)</span>
                         <span>
-                            <span class="dispatch-toast-title">A consequence unfolded</span>
-                            <span class="dispatch-toast-copy">From your Turn @toastDispatch.DecisionTurn decision · tap to review</span>
+                            <span class="dispatch-toast-title">@toastDispatch.Title</span>
+                            <span class="dispatch-toast-copy">Turn @toastDispatch.EventTurn · tap to review</span>
                         </span>
                     </button>
                 }
@@ -1181,7 +1244,7 @@ else
             }
 
             <!-- ═══ ISSUE CHIP: the appointment ═══ -->
-            @if (_activeTab == Tab.Map && !State.DrawerOpen && State.Phase != GamePhase.Intro)
+            @if (_activeTab == Tab.Map && !State.DrawerOpen && State.Phase == GamePhase.Play)
             {
                 <div class="issue-chip @(_issueHeld ? "ringing" : "")" @onclick="IssueChipTap">
                     @if (_issueHeld)
@@ -1229,6 +1292,10 @@ else
                             {
                                 <button class="dispatch-filter @(_dispatchFilter == DispatchFilter.Progress ? "on" : "")" @onclick="() => SetDispatchFilter(DispatchFilter.Progress)">Progress</button>
                             }
+                            @if (State.Dispatches.Any(d => d.Kind == DispatchKind.Warning))
+                            {
+                                <button class="dispatch-filter @(_dispatchFilter == DispatchFilter.Warnings ? "on" : "")" @onclick="() => SetDispatchFilter(DispatchFilter.Warnings)">Warnings</button>
+                            }
                         </div>
                     </div>
 
@@ -1269,10 +1336,10 @@ else
                                     {
                                         <span class="dispatch-unread-dot"></span>
                                     }
-                                    <span class="dispatch-item-icon">⚖</span>
+                                    <span class="dispatch-item-icon">@DispatchIcon(dispatch)</span>
                                     <span class="dispatch-item-body">
                                         <span class="dispatch-item-meta">
-                                            <span>Consequence</span>
+                                            <span>@DispatchLabel(dispatch)</span>
                                             <span>@(dispatch.EventTurn == dispatch.DecisionTurn ? $"T{dispatch.EventTurn}" : $"decided T{dispatch.DecisionTurn}")</span>
                                         </span>
                                         <span class="dispatch-item-cause">@dispatch.Cause</span>
@@ -1291,6 +1358,28 @@ else
                                 </button>
                             }
                         }
+                    </div>
+                </div>
+            }
+
+            @if (State.Phase == GamePhase.GameOver)
+            {
+                <div class="ouster-overlay" role="dialog" aria-modal="true" aria-label="Mayor ousted">
+                    <div class="ouster-card">
+                        <div class="ouster-kicker">Mandate lost</div>
+                        <div class="ouster-seal">⚖</div>
+                        <h1>The mayor has been ousted</h1>
+                        <p>@State.GameOverReason</p>
+                        <div class="ouster-metrics">
+                            <span><small>Affordability</small><b>@Pressure.AffordabilityLabel</b></span>
+                            <span><small>Growth · 10T</small><b>@GrowthDisplay</b></span>
+                            <span><small>Approval</small><b>@Math.Round(State.Approval)</b></span>
+                        </div>
+                        @if (SaveService.CheckpointExists)
+                        {
+                            <button class="ouster-primary" @onclick="RewindToLastIssue">Rewind to the last issue</button>
+                        }
+                        <button class="ouster-secondary" @onclick="ResetGame">Start a new city</button>
                     </div>
                 </div>
             }
@@ -1335,7 +1424,7 @@ else
 
 @code {
     private enum Tab { Map, City, Badges, Settings }
-    private enum DispatchFilter { All, Consequences, Progress }
+    private enum DispatchFilter { All, Consequences, Progress, Warnings }
     private enum EraRevealPhase { None, Announcement, Address, ChestReveal }
 
     private bool _loaded;
@@ -1345,6 +1434,8 @@ else
     private int? _stockViewAtomId;
     private int? _compareAtomId;
     private Tab _activeTab = Tab.Map;
+    private bool _pressureDetailsOpen;
+    private bool _goalsOpen;
 
     // ─── Intro sequence ──────────────────────────────────────────────────
     private enum IntroPhase { Boot, Awakening, Dialogue, Naming, Commit }
@@ -1474,8 +1565,10 @@ else
     private void RestoreFrom(SaveGame save)
     {
         SaveService.Apply(save, State);
+        State.HighestEraIndex = Math.Max(State.HighestEraIndex, Config.GetEraIndex(State.Population));
+        for (var i = 0; i <= State.HighestEraIndex; i++) Pressure.EnsureGoals(i);
         MigrateLegacyDispatches();
-        State.Phase = GamePhase.Play;
+        if (State.Phase != GamePhase.GameOver) State.Phase = GamePhase.Play;
         _introStarted = true;                       // never boot the intro
         _lastCeremonyEra = GatedEraIdx;             // ceremonies up to here were shown
         _eraStartUtc = save.EraStartUtc;
@@ -1850,8 +1943,8 @@ else
         get
         {
             int allowed = 0;
-            int popIdx = Config.GetEraIndex(State.Population);
-            while (allowed < popIdx)
+            int unlockedIdx = Math.Clamp(State.HighestEraIndex, 0, Math.Max(0, Config.Eras.Count - 1));
+            while (allowed < unlockedIdx)
             {
                 var era = Config.Eras[allowed];
                 int total = Config.Scenarios.Count(sc => sc.EraId == era.Id);
@@ -1999,6 +2092,8 @@ else
         && _eraRevealPhase == EraRevealPhase.None
         && _stockViewAtomId == null
         && !_dispatchesOpen
+        && !_pressureDetailsOpen
+        && !_goalsOpen
         && !_fabOpen
         && !_tutorialActive;
 
@@ -2235,12 +2330,63 @@ else
         ? null
         : State.Dispatches.FirstOrDefault(d => d.Id == State.ToastDispatchId);
     private int UnreadDispatchCount => State.Dispatches.Count(d => !d.IsPending && !d.IsRead);
+    private List<EraGoal> CurrentEraGoals => State.EraGoals.Where(g => g.EraIndex == GatedEraIdx).ToList();
+    private int CompletedEraGoals => CurrentEraGoals.Count(g => g.Completed);
+    private string GrowthDisplay => $"{State.NetGrowthRate * 1000:+0.0;-0.0;0.0}%";
+    private int GrowthScore => (int)Math.Round(Math.Clamp((State.NetGrowthRate + .018) / .030 * 100, 0, 100));
+    private string PressureTone => State.OusterPressure >= 50 || State.Approval < 28 || State.Affordability < .72
+        ? "critical"
+        : State.OusterPressure > 0 || State.Approval < 45 || State.Affordability < .90 ? "strained" : "healthy";
     private IEnumerable<GameDispatch> FilteredDispatches => _dispatchFilter switch
     {
         DispatchFilter.Consequences => State.Dispatches.Where(d => d.Kind == DispatchKind.Consequence),
         DispatchFilter.Progress => State.Dispatches.Where(d => d.Kind == DispatchKind.Progress),
+        DispatchFilter.Warnings => State.Dispatches.Where(d => d.Kind == DispatchKind.Warning),
         _ => State.Dispatches,
     };
+
+    private static string DispatchIcon(GameDispatch dispatch) => dispatch.Kind switch
+    {
+        DispatchKind.Warning => "!",
+        DispatchKind.Progress => "✓",
+        _ => "⚖",
+    };
+
+    private static string DispatchLabel(GameDispatch dispatch) => dispatch.Kind switch
+    {
+        DispatchKind.Warning => "Warning",
+        DispatchKind.Progress => "Progress",
+        _ => "Consequence",
+    };
+
+    private static string NeedStatus(double coverage) => coverage switch
+    {
+        >= 1.1 => "surplus",
+        >= 1 => "supplied",
+        >= .75 => "strained",
+        _ => "shortage",
+    };
+
+    private static string GoalProgress(EraGoal goal)
+    {
+        var current = Math.Min(goal.Target, goal.Progress);
+        return goal.Kind == EraGoalKind.Education
+            ? $"{current:0}/{goal.Target:0}%"
+            : $"{current:0}/{goal.Target:0}";
+    }
+
+    private void TogglePressureDetails()
+    {
+        _pressureDetailsOpen = !_pressureDetailsOpen;
+        if (_pressureDetailsOpen) { _goalsOpen = false; _fabOpen = false; }
+    }
+
+    private async Task SelectNeedAtom(int? atomId)
+    {
+        if (atomId is not int id) return;
+        _pressureDetailsOpen = false;
+        await SelectAtom(id);
+    }
 
     private void MigrateLegacyDispatches()
     {
@@ -2610,6 +2756,8 @@ else
         // Fresh experiment: clear old save + reset the issue ladder
         SaveService.Delete();
         IssueProgress.Reset(Config.Eras.Select(e => e.Id));
+        State.HighestEraIndex = Config.GetEraIndex(State.Population);
+        Pressure.EnsureGoals(State.HighestEraIndex);
         await NotificationHelper.RequestPermissionAsync();
         _issueEraId = -1;
         _lastCeremonyEra = 0;
@@ -2689,12 +2837,35 @@ else
 
     private async Task HandleChoice(int choiceId)
     {
+        SaveService.SaveCheckpoint(State, _eraStartUtc, _eraStartPop, Config.Eras.Select(e => e.Id));
         Scenarios.MakeChoice(choiceId);
         // Issue answered: climb the geometric ladder
         IssueProgress.SetDone(_issueEraId, Math.Min(EraIssuesTotal, IssueProgress.Done(_issueEraId) + 1));
         ScheduleNextIssue();
         try { await JS.InvokeVoidAsync("AgeOfLibertyAudio.sfxChoice"); } catch { }
         StateHasChanged();
+    }
+
+    private void RewindToLastIssue()
+    {
+        var checkpoint = SaveService.LoadCheckpoint();
+        if (checkpoint == null) return;
+        Economy.CancelPendingWork();
+        foreach (var (eraId, count) in checkpoint.IssueProgressByEra)
+            IssueProgress.SetDone(eraId, count);
+        RestoreFrom(checkpoint);
+        State.OusterPressure = 0;
+        State.OusterWarningStage = 0;
+        State.GameOverReason = null;
+        State.ActiveScenario = null;
+        State.ActiveDispatchId = null;
+        State.ToastDispatchId = null;
+        State.Phase = GamePhase.Play;
+        _issueHeld = true;
+        _autoOpenPending = false;
+        _pressureDetailsOpen = false;
+        _goalsOpen = false;
+        State.NotifyStateChanged();
     }
 
     private static string FmtEraTime(TimeSpan t)

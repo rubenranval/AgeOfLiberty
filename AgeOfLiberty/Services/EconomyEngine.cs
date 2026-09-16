@@ -8,6 +8,7 @@ public class EconomyEngine : IDisposable
     private readonly GameState _state;
     private readonly GameConfigStore _config;
     private readonly ScenarioEngine _scenarios;
+    private readonly CityPressureEngine _pressure;
     private readonly Random _rng = new();
 
     private readonly CancellationTokenSource _lifetimeCts = new();
@@ -29,11 +30,12 @@ public class EconomyEngine : IDisposable
     private const int CascadeHopDelayMs = 700;
     private const int CascadeMaxHops = 2;
 
-    public EconomyEngine(GameState state, GameConfigStore config, ScenarioEngine scenarios)
+    public EconomyEngine(GameState state, GameConfigStore config, ScenarioEngine scenarios, CityPressureEngine pressure)
     {
         _state = state;
         _config = config;
         _scenarios = scenarios;
+        _pressure = pressure;
         _pendingWorkCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
     }
 
@@ -41,6 +43,10 @@ public class EconomyEngine : IDisposable
     {
         if (_running || !_config.IsLoaded) return;
         _running = true;
+
+        _state.HighestEraIndex = Math.Max(_state.HighestEraIndex, _config.GetEraIndex(_state.Population));
+        _lastEraIndex = _state.HighestEraIndex;
+        for (var i = 0; i <= _state.HighestEraIndex; i++) _pressure.EnsureGoals(i);
 
         var cfg = _config.Config;
         // Income and price jitter historically fired immediately. Preserve that
@@ -164,23 +170,28 @@ public class EconomyEngine : IDisposable
     {
         if (_state.Phase != GamePhase.Play || _state.ActiveScenario != null) return false;
 
-        var housingWeight = _config.Atoms
-            .Where(a => a.HousingWeight > 0)
-            .Sum(a => _state.GetBuiltCount(a.Id) * a.HousingWeight);
+        var turnDurationMs = Math.Max(1_000, _config.Config.TurnTicks * 1_000.0);
+        var shareOfTurn = Math.Max(250, _config.Config.PopGrowthIntervalMs) / turnDurationMs;
+        _state.PopGrowthFraction += _state.Population * _state.NetGrowthRate * shareOfTurn;
 
-        if (housingWeight <= 0) return false;
-
-        var growth = _config.Config.PopGrowthRate * housingWeight;
-        _state.PopGrowthFraction += growth;
+        var changed = false;
 
         while (_state.PopGrowthFraction >= 1)
         {
             _state.PopGrowthFraction -= 1;
             _state.Population++;
             CheckEraUnlock();
+            changed = true;
         }
 
-        return true;
+        while (_state.PopGrowthFraction <= -1 && _state.Population > 1)
+        {
+            _state.PopGrowthFraction += 1;
+            _state.Population--;
+            changed = true;
+        }
+
+        return changed;
     }
 
     private bool TickJitter()
@@ -188,7 +199,7 @@ public class EconomyEngine : IDisposable
         if (_state.Phase != GamePhase.Play) return false;
 
         var cfg = _config.Config;
-        var eraIndex = _config.GetEraIndex(_state.Population);
+        var eraIndex = Math.Clamp(_state.HighestEraIndex, 0, Math.Max(0, _config.Eras.Count - 1));
         var available = _config.GetAvailableAtoms(eraIndex);
 
         foreach (var atom in available)
@@ -207,6 +218,11 @@ public class EconomyEngine : IDisposable
         if (_state.TickCount % Math.Max(1, _config.Config.TurnTicks) != 0) return false;
 
         _state.Turn++;
+
+        // Recompute city conditions before recording this turn. This is the
+        // only place demand, mandate pressure, and goals advance.
+        _pressure.AdvanceTurn(GetIncomeRate());
+        CheckEraUnlock();
 
         // Record snapshots — GetCleanPrice MUST include PriceMultipliers
         // (base × multipliers, no jitter), or charts will never move.
@@ -346,7 +362,7 @@ public class EconomyEngine : IDisposable
                 var atom = _config.AtomsById[kv.Key];
                 var oldPrice = _state.GetCleanPrice(atom);
                 var newPrice = Math.Max(1, (int)Math.Round(
-                    atom.BasePrice * _state.GetMultiplier(atom.Id) * kv.Value));
+                    atom.BasePrice * _state.GetMultiplier(atom.Id) * kv.Value * _state.GetDemandMultiplier(atom.Id)));
                 var percent = oldPrice == 0
                     ? 0
                     : Math.Round((newPrice - oldPrice) * 1000.0 / oldPrice) / 10.0;
@@ -447,8 +463,8 @@ public class EconomyEngine : IDisposable
     private int GatedEraIndex()
     {
         int allowed = 0;
-        int popIdx = _config.GetEraIndex(_state.Population);
-        while (allowed < popIdx)
+        int unlockedIdx = Math.Clamp(_state.HighestEraIndex, 0, Math.Max(0, _config.Eras.Count - 1));
+        while (allowed < unlockedIdx)
         {
             var era = _config.Eras[allowed];
             int total = _config.Scenarios.Count(sc => sc.EraId == era.Id);
@@ -460,18 +476,19 @@ public class EconomyEngine : IDisposable
 
     // ── Era detection ───────────────────────────────────────────────────────
 
-    private int _lastEraIndex = 0;
+    private int _lastEraIndex;
 
     private void CheckEraUnlock()
     {
         var newIndex = _config.GetEraIndex(_state.Population);
-        if (newIndex > _lastEraIndex)
+        if (newIndex > _state.HighestEraIndex)
         {
-            _lastEraIndex = newIndex;
+            _state.HighestEraIndex = newIndex;
             _state.EraUnlockAnimIndex = newIndex;
             _state.AddLog($"Welcome to the {_config.Eras[newIndex].Name} era!");
             // No auto-dismiss — player taps to continue
         }
+        _lastEraIndex = Math.Max(_lastEraIndex, _state.HighestEraIndex);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
