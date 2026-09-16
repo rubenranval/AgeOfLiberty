@@ -3974,3 +3974,23 @@ body, html {
 .city-view, .settings-view {
     padding-top: calc(var(--sat) + 14px);
 }
+
+/* Challenge prototype: one deadline, supply actions, and declared stakes. */
+.map-objectives { position:absolute; top:calc(var(--sat) + 112px); left:16px; right:16px; z-index:18; max-height:42vh; overflow-y:auto; overscroll-behavior:contain; }
+.map-objectives .era-goals { position:static; margin-top:6px; }
+.challenge-card { padding:12px; background:rgba(8,20,34,.96); border-left:2px solid var(--cyan); color:var(--text-body); }
+.challenge-heading { display:flex; justify-content:space-between; gap:8px; align-items:baseline; }
+.challenge-heading strong,.challenge-offer strong { font-size:14px; color:var(--gold-hi); }
+.challenge-heading > span { font:600 10px var(--font-mono); color:var(--cyan-soft); }
+.challenge-card p { margin:7px 0; font-size:13px; line-height:1.4; }
+.challenge-card .challenge-detail { font-size:11px; color:var(--cyan-soft); }
+.challenge-supplies { display:flex; gap:6px; flex-wrap:wrap; }
+.challenge-supplies button { min-height:44px; padding:8px; background:rgba(74,216,255,.07); border:1px solid rgba(74,216,255,.22); color:var(--text-body); text-transform:capitalize; }
+.challenge-card .supplied { color:var(--green); }
+.challenge-card .short { color:var(--gold-hi); }
+.challenge-card progress { width:100%; height:5px; accent-color:var(--green); }
+.challenge-stakes { color:var(--gold-hi); font-size:11px; }
+.challenge-start { min-height:44px; margin-top:4px; padding:8px 14px; background:var(--gold-mid); color:#171107; border:0; font-weight:700; }
+.challenge-start:disabled { opacity:.5; }
+.challenge-card summary { min-height:32px; padding-top:8px; color:var(--cyan-soft); font-size:12px; cursor:pointer; }
+.challenge-offer { margin-top:8px; }

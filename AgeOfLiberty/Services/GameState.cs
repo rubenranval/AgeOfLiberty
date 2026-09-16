@@ -60,6 +60,9 @@ public class GameState
     public List<EraGoal> EraGoals { get; set; } = new();
     public HashSet<int> GoalRewardedEraIndexes { get; set; } = new();
 
+    public CityChallenge? ActiveChallenge { get; set; }
+    public int NextChallengeIndex { get; set; }
+
     // UI State
 
     public GamePhase Phase { get; set; } = GamePhase.Intro;

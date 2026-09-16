@@ -1,0 +1,68 @@
+@using AgeOfLiberty.Models
+@using AgeOfLiberty.Services
+@inject GameState State
+@inject CityPressureEngine Pressure
+
+<section class="challenge-card" aria-label="City challenge">
+    @if (State.ActiveChallenge is CityChallenge round)
+    {
+        <div class="challenge-heading">
+            <strong>@round.Rules.Title</strong>
+            <span>@(round.Status == ChallengeStatus.Active ? $"{Math.Max(0, round.DeadlineTurn - State.Turn)} turns left" : round.Status == ChallengeStatus.Won ? "CHALLENGE MET" : "CHALLENGE MISSED")</span>
+        </div>
+        @if (round.Status == ChallengeStatus.Active)
+        {
+            <p>@round.Rules.Objective</p>
+            <div class="challenge-supplies">
+                @foreach (var category in round.Rules.Categories)
+                {
+                    var need = Pressure.GetBasket().FirstOrDefault(n => n.Category == category);
+                    var coverage = round.Coverage.GetValueOrDefault(category);
+                    <button type="button" @onclick="() => OpenSupply(need?.AtomId)" disabled="@(need?.AtomId == null)">
+                        @category <b class="@(coverage >= round.Rules.TargetCoverage ? "supplied" : "short")">@coverage.ToString("P0")</b> ↗
+                    </button>
+                }
+            </div>
+            <p class="challenge-detail">Last turn · includes @round.ExpectedCitizens newcomers · target @round.Rules.TargetCoverage.ToString("P0")</p>
+            <progress max="@round.Rules.RequiredTurns" value="@Math.Min(round.Rules.RequiredTurns, round.ConsecutiveTurns)" aria-label="Consecutive supplied turns"></progress>
+            <p class="challenge-detail">@Math.Min(round.Rules.RequiredTurns, round.ConsecutiveTurns)/@round.Rules.RequiredTurns supplied turns · must hold through turn @round.DeadlineTurn</p>
+            <div class="challenge-stakes">Meet it: +@round.SuccessArrivals citizens · Miss it: +@round.FailureArrivals</div>
+        }
+        else
+        {
+            <p role="status">@round.Result</p>
+            <details><summary>Why?</summary><p>Final supplied streak: @Math.Min(round.Rules.RequiredTurns, round.ConsecutiveTurns)/@round.Rules.RequiredTurns turns.</p><p>@string.Join(" · ", round.Coverage.Select(n => $"{n.Key}: {n.Value:P0}"))</p><p>@round.Rules.Lesson</p></details>
+        }
+    }
+    @if (State.ActiveChallenge?.Status != ChallengeStatus.Active)
+    {
+        var next = ChallengeCatalog.Get(State.NextChallengeIndex);
+        @if (next != null)
+        {
+            var arrivals = Math.Max(2, (int)Math.Ceiling(Math.Max(1, State.Population) * .10));
+            var available = next.Categories.All(c => Pressure.GetBasket().Any(n => n.Category == c && n.AtomId != null));
+            <div class="challenge-offer">
+                <strong>@next.Title · @next.DurationTurns turns</strong>
+                <p>@next.Objective</p>
+                <p class="challenge-stakes">Meet it: +@arrivals citizens · Miss it: +@(arrivals / 3)</p>
+                <button type="button" class="challenge-start" disabled="@(!available || State.Phase != GamePhase.Play)" @onclick="Start">Start challenge</button>
+                @if (!available) { <p>Unlock the required supply buildings to begin.</p> }
+            </div>
+        }
+        else
+        {
+            <p class="challenge-detail">All three prototype challenges played. Your city continues.</p>
+        }
+    }
+</section>
+
+@code {
+    private void Start() => Pressure.StartNextChallenge();
+    private void OpenSupply(int? atomId)
+    {
+        if (atomId is not int id || State.Phase != GamePhase.Play) return;
+        State.SelectedAtomId = id;
+        State.DrawerOpen = true;
+        State.NotifyStateChanged();
+    }
+}

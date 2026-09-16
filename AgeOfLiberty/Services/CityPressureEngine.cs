@@ -28,7 +28,7 @@ public class CityPressureEngine
     {
         if (!_config.IsLoaded || _config.Eras.Count == 0) return Array.Empty<CityNeedItem>();
 
-        var eraIndex = Math.Clamp(requestedEraIndex ?? _state.HighestEraIndex, 0, _config.Eras.Count - 1);
+        var eraIndex = Math.Clamp(requestedEraIndex ?? ActiveEraIndex, 0, _config.Eras.Count - 1);
         var available = _config.GetAvailableAtoms(eraIndex).Where(a => a.IsBuildable).ToList();
         var groups = new[]
         {
@@ -77,7 +77,7 @@ public class CityPressureEngine
         if (!_config.IsLoaded || _config.Eras.Count == 0) return;
 
         _state.HighestEraIndex = Math.Max(_state.HighestEraIndex, _config.GetEraIndex(_state.Population));
-        var eraIndex = Math.Clamp(_state.HighestEraIndex, 0, _config.Eras.Count - 1);
+        var eraIndex = ActiveEraIndex;
         if (_state.PressureStartedTurn <= 0) _state.PressureStartedTurn = _state.Turn;
 
         var basket = GetBasket(eraIndex);
@@ -131,7 +131,61 @@ public class CityPressureEngine
 
         for (var goalEra = 0; goalEra <= eraIndex; goalEra++)
             UpdateGoals(goalEra, indicators[CivicIndicators.Education]);
+        AdvanceChallenge();
         UpdateOusterPressure();
+    }
+
+    public int ActiveEraIndex
+    {
+        get
+        {
+            int unlocked = Math.Clamp(_state.HighestEraIndex, 0, Math.Max(0, _config.Eras.Count - 1));
+            int allowed = 0;
+            while (allowed < unlocked)
+            {
+                var era = _config.Eras[allowed];
+                if (!IssueProgress.EraComplete(era.Id, _config.Scenarios.Count(s => s.EraId == era.Id))) break;
+                allowed++;
+            }
+            return allowed;
+        }
+    }
+
+    public bool StartNextChallenge()
+    {
+        if (_state.Phase != GamePhase.Play || !_config.IsLoaded
+            || _state.ActiveChallenge?.Status == ChallengeStatus.Active) return false;
+        var rules = ChallengeCatalog.Get(_state.NextChallengeIndex);
+        if (rules == null) return false;
+        var basket = GetBasket();
+        // Never offer a deadline the player has no accessible supply action for.
+        if (rules.Categories.Any(c => !basket.Any(n => n.Category == c && n.AtomId != null))) return false;
+        _state.ActiveChallenge = ChallengeRules.Start(rules, _state.Turn, _state.Population);
+        _state.ActiveChallenge.Coverage = ChallengeCoverage(_state.ActiveChallenge);
+        _state.NotifyStateChanged();
+        return true;
+    }
+
+    public Dictionary<string, double> ChallengeCoverage(CityChallenge round) => GetBasket()
+        .ToDictionary(n => n.Category, n => n.Coverage * Math.Max(1, _state.Population)
+            / (Math.Max(1.0, _state.Population) + round.ExpectedCitizens));
+
+    private void AdvanceChallenge()
+    {
+        var round = _state.ActiveChallenge;
+        if (round == null || !ChallengeRules.Advance(round, _state.Turn, ChallengeCoverage(round))) return;
+        bool won = round.Status == ChallengeStatus.Won;
+        int arrivals = won ? round.SuccessArrivals : round.FailureArrivals;
+        _state.Population += arrivals;
+        _state.NextChallengeIndex++;
+        var measurements = string.Join(" · ", round.Rules.Categories.Select(c =>
+            $"{c}: {round.Coverage.GetValueOrDefault(c):P0}"));
+        round.Result = won
+            ? $"{arrivals} citizens arrived. They now contribute to city income and need supplies."
+            : $"Only {arrivals} citizens arrived; {round.SuccessArrivals - arrivals} chose not to move.";
+        AddDispatch(DispatchKind.Progress, won ? "Challenge met — " + round.Rules.Title
+            : "Challenge missed — " + round.Rules.Title,
+            measurements + ". " + round.Result + " " + round.Rules.Lesson, toast: true);
     }
 
     public string AffordabilityLabel => _state.Affordability switch

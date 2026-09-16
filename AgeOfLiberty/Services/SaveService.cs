@@ -11,7 +11,7 @@ namespace AgeOfLiberty.Services;
 /// </summary>
 public class SaveGame
 {
-    public int SchemaVersion { get; set; } = 3;
+    public int SchemaVersion { get; set; } = 4;
     public DateTime SavedAtUtc { get; set; }
     public string CityName { get; set; } = "";
     public long Gold { get; set; }
@@ -31,6 +31,8 @@ public class SaveGame
     public int HighestEraIndex { get; set; }
     public string? GameOverReason { get; set; }
     public bool IsGameOver { get; set; }
+    public CityChallenge? ActiveChallenge { get; set; }
+    public int NextChallengeIndex { get; set; }
     public List<EraGoal> EraGoals { get; set; } = new();
     public List<int> GoalRewardedEraIndexes { get; set; } = new();
     public Dictionary<int, int> IssueProgressByEra { get; set; } = new();
@@ -48,7 +50,7 @@ public class SaveGame
 
 public static class SaveService
 {
-    private const int CurrentSchema = 3;
+    private const int CurrentSchema = 4;
     private static string SavePath => Path.Combine(FileSystem.AppDataDirectory, "aol_save.json");
     private static string TmpPath => SavePath + ".tmp";
     private static string CheckpointPath => Path.Combine(FileSystem.AppDataDirectory, "aol_checkpoint.json");
@@ -115,6 +117,8 @@ public static class SaveService
     {
         SchemaVersion = CurrentSchema,
         SavedAtUtc = DateTime.UtcNow,
+        ActiveChallenge = state.ActiveChallenge,
+        NextChallengeIndex = state.NextChallengeIndex,
         CityName = state.CityName,
         Gold = state.Gold,
         Population = state.Population,
@@ -180,6 +184,8 @@ public static class SaveService
 
     public static void Apply(SaveGame s, GameState state)
     {
+        state.ActiveChallenge = s.ActiveChallenge;
+        state.NextChallengeIndex = s.NextChallengeIndex;
         state.CityName = s.CityName;
         state.Gold = s.Gold;
         state.Population = s.Population;

@@ -124,6 +124,8 @@ else
                     </button>
                 </div>
 
+                <div class="map-objectives">
+                <ChallengePanel />
                 @if (CurrentEraGoals.Count > 0)
                 {
                     <section class="era-goals @(_goalsOpen ? "open" : "")">
@@ -150,6 +152,8 @@ else
                         </div>
                     </section>
                 }
+
+                </div>
 
                 @if (_pressureDetailsOpen)
                 {
